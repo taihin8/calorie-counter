@@ -1,4 +1,4 @@
-﻿import sys, os
+import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import database
 import tempfile
@@ -48,3 +48,37 @@ def test_delete_note():
     notes = database.get_notes(uid)
     database.delete_note(notes[0]['id'])
     assert database.get_notes(uid) == []
+
+def test_update_note():
+    uid = database.add_user('nu', 'p')
+    database.add_note(uid, 'Старый текст')
+    notes = database.get_notes(uid)
+    database.update_note(notes[0]['id'], 'Новый текст')
+    notes = database.get_notes(uid)
+    assert notes[0]['text'] == 'Новый текст'
+
+def test_delete_food_entry():
+    uid = database.add_user('fd', 'p')
+    database.add_food_entry(uid, 'Продукт', 100, 100)
+    entries = database.get_daily_food(uid)
+    database.delete_food_entry(entries[0]['id'])
+    assert database.get_daily_food(uid) == []
+
+def test_update_food_entry():
+    uid = database.add_user('fu', 'p')
+    database.add_food_entry(uid, 'Старое', 100, 100)
+    entries = database.get_daily_food(uid)
+    database.update_food_entry(entries[0]['id'], 'Новое', 200, 50)
+    entries = database.get_daily_food(uid)
+    assert entries[0]['product_name'] == 'Новое'
+    assert entries[0]['calories'] == 200
+    assert entries[0]['grams'] == 50
+
+def test_get_entry_dates():
+    uid = database.add_user('gd', 'p')
+    # default date
+    database.add_food_entry(uid, 'Продукт', 100, 100)
+    # another date
+    database.add_food_entry(uid, 'Другой', 50, 100, '2026-10-01')
+    dates = database.get_entry_dates(uid)
+    assert len(dates) == 2

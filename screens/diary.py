@@ -1,9 +1,16 @@
-﻿import flet as ft
-from datetime import date
-from database import add_food_entry, get_daily_food, get_daily_calories, add_note, get_notes, delete_note
+import flet as ft
+from datetime import date, datetime, timedelta
+from calendar import monthrange
+from database import (add_food_entry, get_daily_food, get_daily_calories,
+                      add_note, get_notes, delete_note, update_note,
+                      delete_food_entry, update_food_entry, get_entry_dates)
+from services.speech import recognize_async, parse_food_text
+
+GREEN = ft.Colors.GREEN_400
+GREY = ft.Colors.GREY_300
 
 def diary_screen(page: ft.Page):
-    user = page.session.get("user")
+    user = page.session.store.get("user")
     if not user:
         from screens.login import login_screen
         login_screen(page)
@@ -12,46 +19,224 @@ def diary_screen(page: ft.Page):
     page.clean()
     selected_date = str(date.today())
     total = ft.Text("0 ккал", size=22, weight=ft.FontWeight.BOLD)
+    date_text = ft.Text(selected_date, size=16, weight=ft.FontWeight.BOLD)
     food_list = ft.Column()
-    note_input = ft.TextField(label="Новая заметка", width=300, multiline=True)
+    note_input = ft.TextField(label="Новая заметка", width=280, multiline=True)
     notes_list = ft.Column()
 
+    # ---------- Календарь с подсветкой ----------
+    def build_calendar_dialog():
+        """Месячный календарь: зелёные даты = есть записи."""
+        cal_month = datetime.now().replace(day=1)
+        marked = set(get_entry_dates(user['id']))
+
+        def on_pick(d):
+            nonlocal selected_date
+            selected_date = d.strftime("%Y-%m-%d")
+            refresh()
+            page.pop_dialog()
+
+        def render():
+            header = ft.Row([
+                ft.IconButton(ft.Icons.CHEVRON_LEFT, on_click=lambda e: change_month(-1)),
+                ft.Text(cal_month.strftime("%B %Y"), size=16, weight=ft.FontWeight.BOLD, expand=True, text_align=ft.TextAlign.CENTER),
+                ft.IconButton(ft.Icons.CHEVRON_RIGHT, on_click=lambda e: change_month(1)),
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+            weekdays = ft.Row([ft.Text(w, size=12, color=ft.Colors.GREY, expand=True, text_align=ft.TextAlign.CENTER)
+                               for w in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]])
+
+            first = cal_month.weekday()  # 0 = понедельник
+            days_in_month = monthrange(cal_month.year, cal_month.month)[1]
+            today = date.today()
+
+            cells = []
+            # пустые ячейки до первого дня
+            cells += [ft.Container(width=40, height=40) for _ in range(first)]
+            for day in range(1, days_in_month + 1):
+                d = date(cal_month.year, cal_month.month, day)
+                is_marked = d.strftime("%Y-%m-%d") in marked
+                is_today = d == today
+                bg = GREEN if is_marked else (ft.Colors.BLUE_50 if is_today else None)
+                cells.append(
+                    ft.Container(
+                        width=40, height=40, bgcolor=bg, border_radius=20,
+                        alignment=ft.Alignment(0, 0),
+                        content=ft.Text(str(day), size=13,
+                                        weight=ft.FontWeight.BOLD if is_today else ft.FontWeight.NORMAL),
+                        on_click=lambda e, dd=d: on_pick(dd),
+                    )
+                )
+
+            weeks = [cells[i:i+7] for i in range(0, len(cells), 7)]
+            body = ft.Column([ft.Row(week) for week in weeks], spacing=4)
+
+            return ft.Column([header, ft.Divider(height=10), weekdays, body])
+
+        def change_month(delta):
+            nonlocal cal_month
+            cal_month = (cal_month.replace(day=28) + timedelta(days=delta*7)).replace(day=1)
+            dialog.content = render()
+            page.update()
+
+        dialog = ft.AlertDialog(title=ft.Text("Календарь"), content=render(),
+                                actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())])
+        return dialog
+
+    def open_calendar(e):
+        page.show_dialog(build_calendar_dialog())
+
+    # ---------- Продукты ----------
     def refresh():
-        nonlocal total
         entries = get_daily_food(user['id'], selected_date)
         food_list.controls.clear()
-        for e in entries:
+        for en in entries:
             food_list.controls.append(
-                ft.Text(f"{e['product_name']} — {e['calories']:.0f} ккал ({e['grams']:.0f} г)", size=14)
+                ft.Row([
+                    ft.Text(f"{en['product_name']} — {en['calories']:.0f} ккал/100г ({en['grams']:.0f} г)",
+                            size=14, expand=True),
+                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=16,
+                                  tooltip="Изменить",
+                                  on_click=lambda _, eid=en['id'], n=en['product_name'],
+                                  c=en['calories'], g=en['grams']: edit_food_dialog(eid, n, c, g)),
+                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=16,
+                                  tooltip="Удалить",
+                                  on_click=lambda _, eid=en['id']: delete_food(eid)),
+                ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
             )
         cal = get_daily_calories(user['id'], selected_date)
         total.value = f"{cal:.0f} ккал"
+        date_text.value = selected_date
         page.update()
 
-    def add_food(e):
+    def delete_food(eid):
+        delete_food_entry(eid)
+        refresh()
+
+    def food_dialog(entry_id=None, name_val="", cal_val="", grams_val="100"):
+        name = ft.TextField(label="Название", value=name_val, autofocus=entry_id is None)
+        cal_field = ft.TextField(label="Калорий на 100г", value=str(cal_val) if cal_val != "" else "",
+                                 keyboard_type=ft.KeyboardType.NUMBER)
+        grams_field = ft.TextField(label="Грамм", value=str(grams_val) if grams_val != "" else "100",
+                                   keyboard_type=ft.KeyboardType.NUMBER)
+        status = ft.Text("", size=11, color=GREEN)
+
+        # подсветка при записи
+        def set_recording(active):
+            name.fill_color = ft.Colors.GREEN_50 if active else None
+            name.label = "🎙 Говорите..." if active else "Название"
+
+        def do_search(e):
+            """Ищет калории по названию в базе"""
+            from services.food_db import guess_calories
+            cal = guess_calories(name.value)
+            if cal:
+                cal_field.value = str(cal).replace('.', ',')
+                status.value = f"Найдено: {cal:.0f} ккал/100г"
+                status.color = GREEN
+            else:
+                status.value = "Не нашёл в базе, впишите вручную"
+                status.color = ft.Colors.ORANGE
+            page.update()
+
+        def voice(e):
+            def on_result(text):
+                set_recording(False)
+                if text:
+                    n, c, g = parse_food_text(text)
+                    if n:
+                        name.value = n
+                    if c:
+                        cal_field.value = str(c).replace('.', ',')
+                    if g:
+                        grams_field.value = str(g).replace('.', ',')
+                    # если калорий не назвали голосом — попробуем угадать по названию
+                    if n and not c:
+                        from services.food_db import guess_calories
+                        cal = guess_calories(n)
+                        if cal:
+                            cal_field.value = str(cal).replace('.', ',')
+                            status.value = f"Калории из базы: {cal:.0f}/100г"
+                            status.color = GREEN
+                page.update()
+
+            set_recording(True)
+            status.value = ""
+            page.update()
+            # слушаем микрофон
+            recognize_async(page.run_thread, on_result)
+
+        mic_btn = ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать продукт", on_click=voice)
+        find_btn = ft.TextButton("Найти калории", on_click=do_search)
+
+        def save(dlg):
+            page.pop_dialog()
+            if name.value and cal_field.value:
+                cal = float(cal_field.value.replace(',', '.'))
+                gr = float(grams_field.value.replace(',', '.') or 100)
+                if entry_id is None:
+                    add_food_entry(user['id'], name.value, cal, gr, selected_date)
+                else:
+                    update_food_entry(entry_id, name.value, cal, gr)
+                refresh()
+
         dialog = ft.AlertDialog(
-            title=ft.Text("Добавить продукт"),
+            title=ft.Text("Продукт"),
             content=ft.Column([
-                ft.TextField(label="Название", autofocus=True),
-                ft.TextField(label="Калорий на 100г", keyboard_type=ft.KeyboardType.NUMBER),
-                ft.TextField(label="Грамм", value="100", keyboard_type=ft.KeyboardType.NUMBER),
+                ft.Row([name, mic_btn], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                find_btn, cal_field, grams_field, status,
             ]),
             actions=[
-                ft.TextButton("Отмена", on_click=lambda e: page.close(dialog)),
-                ft.ElevatedButton("Добавить", on_click=lambda e: save_food(dialog)),
+                ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
             ]
         )
-        page.open(dialog)
+        page.show_dialog(dialog)
 
-    def save_food(dialog):
-        fields = dialog.content.controls
-        name = fields[0].value
-        cal_str = fields[1].value
-        grams_str = fields[2].value
-        page.close(dialog)
-        if name and cal_str:
-            add_food_entry(user['id'], name, float(cal_str), float(grams_str or 100), selected_date)
-            refresh()
+    def add_food(e):
+        food_dialog()
+
+    def edit_food_dialog(eid, n, c, g):
+        food_dialog(entry_id=eid, name_val=n, cal_val=c, grams_val=g)
+
+    # ---------- Заметки ----------
+    def refresh_notes():
+        notes = get_notes(user['id'])
+        notes_list.controls.clear()
+        for n in notes[:20]:
+            notes_list.controls.append(
+                ft.Row([
+                    ft.Text(f"[{n['date']}] {n['text'][:45]}", size=12, expand=True),
+                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=16,
+                                  on_click=lambda _, nid=n['id'], txt=n['text']: edit_note(nid, txt)),
+                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=16,
+                                  on_click=lambda _, nid=n['id']: delete_and_refresh(nid)),
+                ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            )
+        page.update()
+
+    def edit_note(nid, old_text):
+        field = ft.TextField(label="Заметка", value=old_text, multiline=True, autofocus=True)
+
+        def save(dlg):
+            page.pop_dialog()
+            if field.value:
+                update_note(nid, field.value)
+                refresh_notes()
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Редактировать заметку"),
+            content=field,
+            actions=[
+                ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
+            ]
+        )
+        page.show_dialog(dialog)
+
+    def delete_and_refresh(nid):
+        delete_note(nid)
+        refresh_notes()
 
     def save_note(e):
         if note_input.value:
@@ -59,21 +244,19 @@ def diary_screen(page: ft.Page):
             note_input.value = ""
             refresh_notes()
 
-    def refresh_notes():
-        notes = get_notes(user['id'])
-        notes_list.controls.clear()
-        for n in notes[:10]:
-            notes_list.controls.append(
-                ft.Row([
-                    ft.Text(f"[{n['date']}] {n['text'][:50]}...", size=12, expand=True),
-                    ft.IconButton(ft.Icons.DELETE, icon_size=16, on_click=lambda _, nid=n['id']: delete_and_refresh(nid)),
-                ])
-            )
-        page.update()
+    # ---------- Голосовой ввод заметок ----------
+    def voice_input(e):
+        def on_result(text):
+            note_input.fill_color = None
+            note_input.label = "Новая заметка"
+            if text:
+                note_input.value = (note_input.value or "") + (" " + text if note_input.value else text)
+            page.update()
 
-    def delete_and_refresh(nid):
-        delete_note(nid)
-        refresh_notes()
+        note_input.fill_color = ft.Colors.GREEN_50
+        note_input.label = "🎙 Слушаю, говорите..."
+        page.update()
+        recognize_async(page.run_thread, on_result)
 
     refresh()
     refresh_notes()
@@ -84,22 +267,30 @@ def diary_screen(page: ft.Page):
                 ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
                 ft.TextButton("Выйти", on_click=lambda e: logout(page)),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Text(selected_date, size=16),
+            ft.Row([
+                date_text,
+                ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
+                              on_click=open_calendar),
+            ]),
             total,
             ft.Divider(),
             ft.Row([
                 ft.Text("🍽 Продукты", size=16, weight=ft.FontWeight.BOLD),
-                ft.IconButton(ft.Icons.ADD_CIRCLE, on_click=add_food),
+                ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт", on_click=add_food),
             ]),
             food_list,
             ft.Divider(),
             ft.Text("📝 Заметки", size=16, weight=ft.FontWeight.BOLD),
-            ft.Row([note_input, ft.IconButton(ft.Icons.SEND, on_click=save_note)]),
+            ft.Row([
+                note_input,
+                ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать", on_click=voice_input),
+                ft.IconButton(ft.Icons.SEND, tooltip="Сохранить", on_click=save_note),
+            ]),
             notes_list,
         ], scroll=ft.ScrollMode.AUTO)
     )
 
 def logout(page):
-    page.session.clear()
+    page.session.store.clear()
     from screens.login import login_screen
     login_screen(page)

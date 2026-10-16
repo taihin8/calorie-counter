@@ -1,4 +1,4 @@
-﻿import flet as ft
+import flet as ft
 
 def login_screen(page: ft.Page):
     page.clean()
@@ -14,7 +14,7 @@ def login_screen(page: ft.Page):
         from database import get_user
         user = get_user(username.value, password.value)
         if user:
-            page.session.set("user", user)
+            page.session.store.set("user", user)
             from screens.diary import diary_screen
             diary_screen(page)
         else:

@@ -98,3 +98,29 @@ def delete_note(note_id):
     conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
     conn.commit()
     conn.close()
+
+def update_note(note_id, text):
+    conn = get_db()
+    conn.execute("UPDATE notes SET text = ? WHERE id = ?", (text, note_id))
+    conn.commit()
+    conn.close()
+
+def delete_food_entry(entry_id):
+    conn = get_db()
+    conn.execute("DELETE FROM food_entries WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+
+def update_food_entry(entry_id, product_name, calories, grams):
+    conn = get_db()
+    conn.execute("UPDATE food_entries SET product_name = ?, calories = ?, grams = ? WHERE id = ?",
+                 (product_name, calories, grams, entry_id))
+    conn.commit()
+    conn.close()
+
+def get_entry_dates(user_id):
+    """Возвращает список дат, в которые есть внесённые продукты"""
+    conn = get_db()
+    rows = conn.execute("SELECT DISTINCT date FROM food_entries WHERE user_id = ?", (user_id,)).fetchall()
+    conn.close()
+    return [r['date'] for r in rows]

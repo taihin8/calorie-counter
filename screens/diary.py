@@ -1,6 +1,8 @@
 import flet as ft
 from datetime import date, datetime, timedelta
 from calendar import monthrange
+import threading
+import time
 from database import (add_food_entry, get_daily_food, get_daily_calories,
                       add_note, get_notes, delete_note, update_note,
                       delete_food_entry, update_food_entry, get_entry_dates,
@@ -390,6 +392,17 @@ def diary_screen(page: ft.Page):
     refresh()
     refresh_notes()
     refresh_goal()
+
+    # автообновление каждые 10 сек — чтобы подтягивать данные с телефона
+    def _auto_refresh():
+        while True:
+            time.sleep(10)
+            try:
+                page.run_thread(lambda: (refresh(), refresh_notes()))
+            except Exception:
+                break
+    t = threading.Thread(target=_auto_refresh, daemon=True)
+    t.start()
 
     page.add(
         ft.Column([

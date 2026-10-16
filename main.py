@@ -1,5 +1,7 @@
 import sys
 import ctypes
+import subprocess
+import os
 import flet as ft
 from database import init_db, get_user_by_username
 from services.auth_store import get_last_user
@@ -16,6 +18,22 @@ def _ensure_single_instance():
     already_running = ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
     if already_running:
         sys.exit(0)
+
+
+def _cleanup_orphan_windows():
+    """Убирает осиротевшие окна flet (остались после убитого pythonw) —
+    те самые «Warning». Убиваем только клиенты НАШЕГО приложения."""
+    try:
+        assets = os.path.dirname(os.path.abspath(__file__)).replace("\\", "\\\\")
+        ps = (
+            "Get-CimInstance Win32_Process -Filter \"Name='flet.exe'\" | "
+            f"Where-Object {{ $_.CommandLine -like '*{assets}*' }} | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+        )
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                       capture_output=True, timeout=15)
+    except Exception:
+        pass
 
 
 def main(page: ft.Page):
@@ -35,4 +53,5 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     _ensure_single_instance()
+    _cleanup_orphan_windows()
     ft.app(target=main)

@@ -1,0 +1,23 @@
+Daily_Journal_Web/
+├── app.py                    # Точка входа (запуск)
+├── config.py                 # Конфигурация
+├── extensions.py             # Инициализация расширений (db, login_manager)
+├── models.py                 # Модели базы данных
+├── routes/
+│   ├── __init__.py           # Регистрация всех маршрутов
+│   ├── auth.py               # Вход, регистрация, выход
+│   ├── notes.py              # CRUD для заметок (обычные и AJAX)
+│   ├── calendar.py           # Календарь и даты
+│   └── voice.py              # Голосовой ввод
+├── services/
+│   ├── __init__.py
+│   ├── note_service.py       # Бизнес-логика для заметок
+│   └── calendar_service.py   # Бизнес-логика для календаря
+├── templates/                # HTML-шаблоны
+│   ├── base.html             # Базовый шаблон (общий для всех)
+│   ├── login.html
+│   ├── register.html
+│   └── index.html
+├── static/                   # CSS, JS
+│   └── style.css
+└── requirements.txt

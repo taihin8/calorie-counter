@@ -38,6 +38,10 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
     ''')
+    # миграция: добавляем колонку цели калорий
+    cols = [r['name'] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if 'calorie_goal' not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN calorie_goal REAL DEFAULT 2000")
     conn.commit()
     conn.close()
 
@@ -124,3 +128,23 @@ def get_entry_dates(user_id):
     rows = conn.execute("SELECT DISTINCT date FROM food_entries WHERE user_id = ?", (user_id,)).fetchall()
     conn.close()
     return [r['date'] for r in rows]
+
+DEFAULT_GOAL = 2000
+
+def get_calorie_goal(user_id):
+    conn = get_db()
+    row = conn.execute("SELECT calorie_goal FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row['calorie_goal'] if row and row['calorie_goal'] else DEFAULT_GOAL
+
+def set_calorie_goal(user_id, goal):
+    conn = get_db()
+    conn.execute("UPDATE users SET calorie_goal = ? WHERE id = ?", (goal, user_id))
+    conn.commit()
+    conn.close()
+
+def get_goal_progress(user_id, entry_date=None):
+    """Возвращает (цель, съедено, осталось). Остаток может быть отрицательным."""
+    goal = get_calorie_goal(user_id)
+    eaten = get_daily_calories(user_id, entry_date)
+    return goal, eaten, goal - eaten

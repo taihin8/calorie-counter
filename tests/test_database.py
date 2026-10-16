@@ -82,3 +82,28 @@ def test_get_entry_dates():
     database.add_food_entry(uid, 'Другой', 50, 100, '2026-10-01')
     dates = database.get_entry_dates(uid)
     assert len(dates) == 2
+
+def test_default_goal():
+    uid = database.add_user('goal', 'p')
+    assert database.get_calorie_goal(uid) == database.DEFAULT_GOAL
+
+def test_set_goal():
+    uid = database.add_user('goalset', 'p')
+    database.set_calorie_goal(uid, 1500)
+    assert database.get_calorie_goal(uid) == 1500
+
+def test_goal_progress():
+    uid = database.add_user('gp', 'p')
+    database.set_calorie_goal(uid, 1000)
+    database.add_food_entry(uid, 'Еда', 300, 100)
+    goal, eaten, left = database.get_goal_progress(uid)
+    assert goal == 1000
+    assert eaten == 300
+    assert left == 700
+
+def test_goal_over():
+    uid = database.add_user('go', 'p')
+    database.set_calorie_goal(uid, 500)
+    database.add_food_entry(uid, 'Много', 800, 100)
+    goal, eaten, left = database.get_goal_progress(uid)
+    assert left < 0

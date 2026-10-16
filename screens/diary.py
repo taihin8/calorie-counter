@@ -3,7 +3,8 @@ from datetime import date, datetime, timedelta
 from calendar import monthrange
 from database import (add_food_entry, get_daily_food, get_daily_calories,
                       add_note, get_notes, delete_note, update_note,
-                      delete_food_entry, update_food_entry, get_entry_dates)
+                      delete_food_entry, update_food_entry, get_entry_dates,
+                      get_calorie_goal, set_calorie_goal, get_goal_progress)
 from services.speech import recognize_async, parse_food_text
 
 GREEN = ft.Colors.GREEN_400
@@ -23,6 +24,51 @@ def diary_screen(page: ft.Page):
     food_list = ft.Column()
     note_input = ft.TextField(label="Новая заметка", width=280, multiline=True)
     notes_list = ft.Column()
+
+    # ---------- Цель калорий ----------
+    goal_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
+    goal_left = ft.Text("", size=13)
+    goal_bar = ft.ProgressBar(value=0, bar_height=10)
+
+    def refresh_goal():
+        goal, eaten, left = get_goal_progress(user['id'], selected_date)
+        goal_text.value = f"🎯 Цель: {goal:.0f} ккал"
+        # прогресс: не выше 1.0, но при переборе показываем полный + красный
+        ratio = min(eaten / goal, 1.0) if goal else 0
+        goal_bar.value = ratio
+        if left >= 0:
+            goal_left.value = f"Съедено {eaten:.0f} · осталось {left:.0f} ккал"
+            goal_left.color = ft.Colors.GREEN
+            goal_bar.color = ft.Colors.GREEN
+        else:
+            goal_left.value = f"Перебор на {-left:.0f} ккал! 🚨"
+            goal_left.color = ft.Colors.RED
+            goal_bar.color = ft.Colors.RED
+        page.update()
+
+    def edit_goal(e):
+        field = ft.TextField(label="Цель, ккал в день",
+                             value=str(int(get_calorie_goal(user['id']))),
+                             keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
+
+        def save(dlg):
+            page.pop_dialog()
+            if field.value:
+                try:
+                    set_calorie_goal(user['id'], float(field.value.replace(',', '.')))
+                    refresh_goal()
+                except ValueError:
+                    pass
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Дневная цель калорий"),
+            content=field,
+            actions=[
+                ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
+            ]
+        )
+        page.show_dialog(dialog)
 
     # ---------- Календарь с подсветкой ----------
     def build_calendar_dialog():
@@ -260,6 +306,7 @@ def diary_screen(page: ft.Page):
 
     refresh()
     refresh_notes()
+    refresh_goal()
 
     page.add(
         ft.Column([
@@ -272,6 +319,21 @@ def diary_screen(page: ft.Page):
                 ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
                               on_click=open_calendar),
             ]),
+            # Панель цели
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        goal_text,
+                        ft.IconButton(ft.Icons.SETTINGS, icon_size=18, tooltip="Изменить цель",
+                                      on_click=edit_goal),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    goal_bar,
+                    goal_left,
+                ]),
+                bgcolor=ft.Colors.GREY_100,
+                border_radius=10,
+                padding=10,
+            ),
             total,
             ft.Divider(),
             ft.Row([

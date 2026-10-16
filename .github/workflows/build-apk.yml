@@ -18,15 +18,16 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
+            -e GITHUB_REF_NAME \
             ghcr.io/flet-dev/flet-build:latest \
             sh -c "
-              pip install flet &&
-              flet build apk
+              python3 -m pip install flet &&
+              python3 -m flet build apk
                 --project \"calorie-counter\"
                 --product \"Calorie Counter\"
                 --org \"com.example\"
                 --company \"Calorie Counter\"
-                --build-name \"$(echo ${GITHUB_REF_NAME#v})\"
+                --build-name \"\$(echo \${GITHUB_REF_NAME#v})\"
             "
 
       - name: Upload APK

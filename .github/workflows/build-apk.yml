@@ -1,0 +1,44 @@
+name: Build APK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v3
+        with:
+          flutter-version: "3.27.0"
+          channel: stable
+          cache: true
+
+      - name: Install Flet
+        run: |
+          pip install flet==0.85.3
+          flutter config --no-analytics
+
+      - name: Build APK
+        run: |
+          flet build apk \
+            --project "calorie-counter" \
+            --product "Calorie Counter" \
+            --org "com.example" \
+            --company "Calorie Counter" \
+            --build-name "${GITHUB_REF_NAME#v}"
+
+      - name: Upload APK to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/apk/*.apk

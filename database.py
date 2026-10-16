@@ -2,9 +2,34 @@ import sqlite3
 import os
 from datetime import date
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'instance', 'app.db')
+DB_PATH = None  # задаётся при первом обращении
+
+
+def _default_db_path():
+    """Путь к БД. На десктопе — instance/ в проекте, на Android — домашняя папка
+    приложения (песочница), куда можно писать."""
+    # 1. явный путь из окружения
+    env = os.environ.get("CALORIE_DB_PATH")
+    if env:
+        return env
+    # 2. папка проекта (десктоп/разработка) — тот же путь, что и раньше
+    proj = os.path.join(os.path.dirname(__file__), '..', 'instance', 'app.db')
+    try:
+        os.makedirs(os.path.dirname(proj), exist_ok=True)
+        with open(proj, 'a'):
+            pass
+        return proj
+    except OSError:
+        pass
+    # 3. домашняя папка пользователя (Android)
+    home = os.path.join(os.path.expanduser('~'), 'calorie_counter.db')
+    return home
+
 
 def get_db():
+    global DB_PATH
+    if DB_PATH is None:
+        DB_PATH = _default_db_path()
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

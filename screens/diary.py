@@ -172,6 +172,48 @@ def diary_screen(page: ft.Page):
         )
         page.show_dialog(dialog)
 
+    # ---------- Обновления ----------
+    def check_updates(e):
+        from services.updater import check_for_update
+
+        def do_check():
+            info = check_for_update()
+            # результат в поток Flet
+            page.run_thread(lambda: show_result(info))
+
+        def show_result(info):
+            if info.get("error"):
+                content = ft.Text(f"Не удалось проверить: {info['error']}")
+            elif info.get("has_update"):
+                def download(e2):
+                    page.pop_dialog()
+                    if info.get("download_url"):
+                        # открываем APK системным инсталлятором
+                        page.launch_url(info["download_url"])
+                    else:
+                        # нет APK в релизе — открываем страницу релизов
+                        from services.version import GITHUB_REPO
+                        page.launch_url(f"https://github.com/{GITHUB_REPO}/releases")
+
+                content = ft.Column([
+                    ft.Text(f"Доступна новая версия {info['latest']}!"),
+                    ft.Text("Скачайте APK — Android предложит обновить приложение."),
+                ])
+                actions = [
+                    ft.TextButton("Позже", on_click=lambda e: page.pop_dialog()),
+                    ft.ElevatedButton("Скачать", on_click=download),
+                ]
+            else:
+                from services.version import VERSION
+                content = ft.Text(f"У вас последняя версия ({VERSION}).")
+                actions = [ft.TextButton("ОК", on_click=lambda e: page.pop_dialog())]
+
+            dialog = ft.AlertDialog(title=ft.Text("Обновление"), content=content,
+                                    actions=actions)
+            page.show_dialog(dialog)
+
+        page.run_thread(do_check)
+
     # ---------- Продукты ----------
     def refresh():
         entries = get_daily_food(user['id'], selected_date)
@@ -353,6 +395,9 @@ def diary_screen(page: ft.Page):
             ft.Row([
                 ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
                 ft.Row([
+                    ft.IconButton(ft.Icons.SYSTEM_UPDATE, icon_size=18, width=32, height=32, padding=0,
+                                  tooltip="Проверить обновления",
+                                  on_click=check_updates),
                     ft.TextButton("Сменить", tooltip="Сменить пользователя",
                                   on_click=lambda e: switch_user(page)),
                     ft.TextButton("Выйти", on_click=lambda e: logout(page)),

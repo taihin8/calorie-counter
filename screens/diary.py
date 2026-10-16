@@ -12,6 +12,13 @@ from services.themes import THEMES, apply_theme
 GREEN = ft.Colors.GREEN_400
 GREY = ft.Colors.GREY_300
 
+def _log_error(context, ex):
+    """Пишет ошибку в instance/crash.log, чтобы не терять причину."""
+    import os, traceback
+    path = os.path.join(os.path.dirname(__file__), '..', 'instance', 'crash.log')
+    with open(path, 'a', encoding='utf-8') as f:
+        f.write(f"[{context}] {ex}\n{traceback.format_exc()}\n")
+
 def diary_screen(page: ft.Page):
     user = page.session.store.get("user")
     if not user:
@@ -143,9 +150,14 @@ def diary_screen(page: ft.Page):
         chips = ft.Row(wrap=True, spacing=4, run_spacing=4)
 
         def choose(name):
-            set_theme(user['id'], name)
-            page.pop_dialog()
-            apply_theme(page, name)
+            try:
+                set_theme(user['id'], name)
+                page.pop_dialog()
+                apply_theme(page, name)
+            except Exception as ex:
+                # не даём приложению упасть на смене темы
+                import traceback
+                _log_error("theme", ex)
 
         for name, (label, _, _) in THEMES.items():
             chips.controls.append(

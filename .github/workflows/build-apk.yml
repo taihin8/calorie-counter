@@ -12,24 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java (Android SDK)
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "17"
-
-      - name: Install Flutter SDK
-        run: |
-          git clone --depth 1 --branch stable \
-            https://github.com/flutter/flutter.git \
-            "$HOME/flutter" -q
-          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
-
-      - name: Accept Android licenses
-        run: |
-          flutter config --android-accept-licenses
-          flutter config --no-analytics
-
       - name: Install Flet
         run: pip install flet==0.85.3
 

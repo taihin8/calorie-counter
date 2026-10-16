@@ -9,25 +9,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      # официальный образ Flet — есть Flutter + Android SDK + Python
-      image: ghcr.io/flet-dev/flet-build:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Dart / Flutter SDK
+        uses: dart-lang/setup-dart@v1
         with:
-          python-version: "3.12"
+          sdk: flutter
 
-      - name: Install Flet
-        run: |
-          pip install flet==0.85.3
+      - name: Setup Java (Android SDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Accept Android licenses
-        run: |
-          flutter config --android-accept-licenses --yes
-          flutter config --no-analytics
+        run: flutter config --android-accept-licenses
+
+      - name: Install Flet
+        run: pip install flet==0.85.3
 
       - name: Build APK
         run: |

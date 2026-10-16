@@ -23,6 +23,15 @@ def test_wrong_password():
     database.add_user('u', 'correct')
     assert database.get_user('u', 'wrong') is None
 
+def test_get_user_by_username():
+    database.add_user('auto', 'p')
+    user = database.get_user_by_username('auto')
+    assert user is not None
+    assert user['username'] == 'auto'
+
+def test_get_user_by_username_missing():
+    assert database.get_user_by_username('no_such_user') is None
+
 def test_add_and_calc_calories():
     uid = database.add_user('cal', 'p')
     database.add_food_entry(uid, 'Яблоко', 52, 200)

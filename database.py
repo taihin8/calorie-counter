@@ -62,6 +62,13 @@ def get_user(username, password):
     conn.close()
     return dict(user) if user else None
 
+def get_user_by_username(username):
+    """Для автовхода: достаёт пользователя по логину без пароля."""
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return dict(user) if user else None
+
 def add_food_entry(user_id, product_name, calories, grams=100, entry_date=None):
     entry_date = entry_date or str(date.today())
     conn = get_db()

@@ -35,6 +35,10 @@ def login_screen(page: ft.Page):
             error.color = ft.Colors.RED
         page.update()
 
+    # Enter в любом поле = вход
+    username.on_submit = do_login
+    password.on_submit = do_login
+
     page.add(
         ft.Column([
             ft.Text("🥗 Calorie Counter", size=28, weight=ft.FontWeight.BOLD),

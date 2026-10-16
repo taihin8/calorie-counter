@@ -314,7 +314,11 @@ def diary_screen(page: ft.Page):
         ft.Column([
             ft.Row([
                 ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
-                ft.TextButton("Выйти", on_click=lambda e: logout(page)),
+                ft.Row([
+                    ft.TextButton("Сменить", tooltip="Сменить пользователя",
+                                  on_click=lambda e: switch_user(page)),
+                    ft.TextButton("Выйти", on_click=lambda e: logout(page)),
+                ], spacing=0),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Row([
                 date_text,
@@ -355,6 +359,15 @@ def diary_screen(page: ft.Page):
     )
 
 def logout(page):
+    # полный выход: не запоминаем пользователя для автовхода
+    from services.auth_store import clear_last_user
+    clear_last_user()
+    page.session.store.clear()
+    from screens.login import login_screen
+    login_screen(page)
+
+def switch_user(page):
+    # смена: остаёмся в памяти последним пользователем, но показываем форму входа
     page.session.store.clear()
     from screens.login import login_screen
     login_screen(page)

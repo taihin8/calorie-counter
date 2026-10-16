@@ -15,3 +15,9 @@ def get_last_user():
             return json.load(f).get("username")
     except (FileNotFoundError, json.JSONDecodeError):
         return None
+
+def clear_last_user():
+    try:
+        os.remove(STORE_PATH)
+    except FileNotFoundError:
+        pass

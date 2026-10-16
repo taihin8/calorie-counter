@@ -12,24 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Build APK in Flet container
+        uses: docker://ghcr.io/flet-dev/flet-build:latest
         with:
-          python-version: "3.12"
+          args: >
+            sh -c "
+            pip install flet &&
+            cd \"$GITHUB_WORKSPACE\" &&
+            flet build apk
+              --project \"calorie-counter\"
+              --product \"Calorie Counter\"
+              --org \"com.example\"
+              --company \"Calorie Counter\"
+              --build-name \"$(echo ${GITHUB_REF_NAME#v})\"
+            "
 
-      - name: Install Flet
-        run: pip install flet
-
-      - name: Build APK
-        run: |
-          flet build apk \
-            --project "calorie-counter" \
-            --product "Calorie Counter" \
-            --org "com.example" \
-            --company "Calorie Counter" \
-            --build-name "${GITHUB_REF_NAME#v}"
-
-      - name: Upload APK to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/apk/*.apk
+      - name: Upload APK to release (create + attach)
+        run: gh release create "${GITHUB_REF_NAME}" build/apk/*.apk --title "${GITHUB_REF_NAME}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

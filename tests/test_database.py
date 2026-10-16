@@ -116,3 +116,12 @@ def test_goal_over():
     database.add_food_entry(uid, 'Много', 800, 100)
     goal, eaten, left = database.get_goal_progress(uid)
     assert left < 0
+
+def test_default_theme():
+    uid = database.add_user('theme', 'p')
+    assert database.get_theme(uid) == database.DEFAULT_THEME
+
+def test_set_theme():
+    uid = database.add_user('themeset', 'p')
+    database.set_theme(uid, 'green')
+    assert database.get_theme(uid) == 'green'

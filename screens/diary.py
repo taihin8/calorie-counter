@@ -4,8 +4,10 @@ from calendar import monthrange
 from database import (add_food_entry, get_daily_food, get_daily_calories,
                       add_note, get_notes, delete_note, update_note,
                       delete_food_entry, update_food_entry, get_entry_dates,
-                      get_calorie_goal, set_calorie_goal, get_goal_progress)
+                      get_calorie_goal, set_calorie_goal, get_goal_progress,
+                      get_theme, set_theme)
 from services.speech import recognize_async, parse_food_text
+from services.themes import THEMES, apply_theme
 
 GREEN = ft.Colors.GREEN_400
 GREY = ft.Colors.GREY_300
@@ -20,6 +22,7 @@ def diary_screen(page: ft.Page):
     page.clean()
     page.window.width = 480
     page.window.height = 800
+    apply_theme(page, get_theme(user['id']))
     selected_date = str(date.today())
     total = ft.Text("0 ккал", size=22, weight=ft.FontWeight.BOLD)
     date_text = ft.Text(selected_date, size=16, weight=ft.FontWeight.BOLD)
@@ -133,6 +136,29 @@ def diary_screen(page: ft.Page):
 
     def open_calendar(e):
         page.show_dialog(build_calendar_dialog())
+
+    # ---------- Темы ----------
+    def open_themes(e):
+        current = get_theme(user['id'])
+        chips = ft.Row(wrap=True, spacing=4, run_spacing=4)
+
+        def choose(name):
+            set_theme(user['id'], name)
+            page.pop_dialog()
+            apply_theme(page, name)
+
+        for name, (label, _, _) in THEMES.items():
+            chips.controls.append(
+                ft.Chip(label=ft.Text(label), selected=(name == current),
+                        on_click=lambda e, n=name: choose(n))
+            )
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Тема оформления"),
+            content=chips,
+            actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())],
+        )
+        page.show_dialog(dialog)
 
     # ---------- Продукты ----------
     def refresh():
@@ -324,6 +350,8 @@ def diary_screen(page: ft.Page):
                 date_text,
                 ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
                               on_click=open_calendar),
+                ft.IconButton(ft.Icons.PALETTE, tooltip="Тема оформления",
+                              on_click=open_themes),
             ]),
             # Панель цели
             ft.Container(

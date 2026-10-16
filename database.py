@@ -42,6 +42,8 @@ def init_db():
     cols = [r['name'] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
     if 'calorie_goal' not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN calorie_goal REAL DEFAULT 2000")
+    if 'theme' not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'light'")
     conn.commit()
     conn.close()
 
@@ -155,3 +157,17 @@ def get_goal_progress(user_id, entry_date=None):
     goal = get_calorie_goal(user_id)
     eaten = get_daily_calories(user_id, entry_date)
     return goal, eaten, goal - eaten
+
+DEFAULT_THEME = 'light'
+
+def get_theme(user_id):
+    conn = get_db()
+    row = conn.execute("SELECT theme FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row['theme'] if row and row['theme'] else DEFAULT_THEME
+
+def set_theme(user_id, theme):
+    conn = get_db()
+    conn.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, user_id))
+    conn.commit()
+    conn.close()

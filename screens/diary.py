@@ -23,9 +23,9 @@ def diary_screen(page: ft.Page):
     selected_date = str(date.today())
     total = ft.Text("0 ккал", size=22, weight=ft.FontWeight.BOLD)
     date_text = ft.Text(selected_date, size=16, weight=ft.FontWeight.BOLD)
-    food_list = ft.Column()
+    food_list = ft.Column(spacing=0)
     note_input = ft.TextField(label="Новая заметка", width=280, multiline=True)
-    notes_list = ft.Column()
+    notes_list = ft.Column(spacing=0)
 
     # ---------- Цель калорий ----------
     goal_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)

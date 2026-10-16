@@ -143,11 +143,11 @@ def diary_screen(page: ft.Page):
                 ft.Row([
                     ft.Text(f"{en['product_name']} — {en['calories']:.0f} ккал/100г ({en['grams']:.0f} г)",
                             size=13, expand=True),
-                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=15, padding=2,
+                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26, height=26, padding=0,
                                   tooltip="Изменить",
                                   on_click=lambda _, eid=en['id'], n=en['product_name'],
                                   c=en['calories'], g=en['grams']: edit_food_dialog(eid, n, c, g)),
-                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=15, padding=2,
+                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=14, width=26, height=26, padding=0,
                                   tooltip="Удалить",
                                   on_click=lambda _, eid=en['id']: delete_food(eid)),
                 ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
@@ -255,9 +255,9 @@ def diary_screen(page: ft.Page):
             notes_list.controls.append(
                 ft.Row([
                     ft.Text(f"[{n['date']}] {n['text'][:45]}", size=11, expand=True),
-                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=15, padding=2,
+                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26, height=26, padding=0,
                                   on_click=lambda _, nid=n['id'], txt=n['text']: edit_note(nid, txt)),
-                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=15, padding=2,
+                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=14, width=26, height=26, padding=0,
                                   on_click=lambda _, nid=n['id']: delete_and_refresh(nid)),
                 ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
             )

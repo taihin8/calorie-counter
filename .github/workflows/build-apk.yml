@@ -12,21 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build APK
-        uses: docker://ghcr.io/flet-dev/flet-build:latest
-        entrypoint: bash
-        with:
-          args:
-            - -c
-            - >
-              cd $GITHUB_WORKSPACE &&
+      - name: Build APK in Flet container
+        run: |
+          docker pull ghcr.io/flet-dev/flet-build:latest
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ghcr.io/flet-dev/flet-build:latest \
+            sh -c "
               pip install flet &&
               flet build apk
-                --project "calorie-counter"
-                --product "Calorie Counter"
-                --org "com.example"
-                --company "Calorie Counter"
-                --build-name "$(echo ${GITHUB_REF_NAME#v})"
+                --project \"calorie-counter\"
+                --product \"Calorie Counter\"
+                --org \"com.example\"
+                --company \"Calorie Counter\"
+                --build-name \"$(echo ${GITHUB_REF_NAME#v})\"
+            "
 
       - name: Upload APK
         run: gh release create "${GITHUB_REF_NAME}" build/apk/*.apk --title "${GITHUB_REF_NAME}" --generate-notes

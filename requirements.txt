@@ -1,5 +1,5 @@
-echo flask > requirements.txt
-echo flask-sqlalchemy >> requirements.txt
-echo flask-login >> requirements.txt
-echo speechrecognition >> requirements.txt
-echo pyaudio >> requirements.txt
+flet==0.85.3
+flask
+flask-sqlalchemy
+flask-login
+speechrecognition

@@ -16,6 +16,8 @@ _MUTEX_HANDLE = None  # держим дескриптор живым до кон
 def _ensure_single_instance():
     if os.environ.get("CALORIE_MODE") == "web":
         return  # web-режим не блокирует
+    if sys.platform != "win32":
+        return  # мьютекс-логика только для Windows
     global _MUTEX_HANDLE
     kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
     _MUTEX_HANDLE = kernel32.CreateMutexW(None, False, MUTEX_NAME)
@@ -27,6 +29,8 @@ def _ensure_single_instance():
 def _cleanup_orphan_windows():
     """Убирает осиротевшие окна flet (остались после убитого pythonw) —
     те самые «Warning». Убиваем только клиенты НАШЕГО приложения."""
+    if sys.platform != "win32":
+        return  # только для Windows
     try:
         assets = os.path.dirname(os.path.abspath(__file__)).replace("\\", "\\\\")
         ps = (

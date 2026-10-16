@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 .venv/
@@ -7,3 +7,7 @@ instance/
 users/
 .env
 *.json
+build/
+dist/
+*.apk
+*.aab

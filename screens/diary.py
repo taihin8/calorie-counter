@@ -235,6 +235,7 @@ def diary_screen(page: ft.Page):
         cal = get_daily_calories(user['id'], selected_date)
         total.value = f"{cal:.0f} ккал"
         date_text.value = selected_date
+        refresh_goal()
         page.update()
 
     def delete_food(eid):

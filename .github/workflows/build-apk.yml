@@ -14,8 +14,8 @@ jobs:
 
       - name: Build APK
         uses: docker://ghcr.io/flet-dev/flet-build:latest
+        entrypoint: bash
         with:
-          entrypoint: bash
           args:
             - -c
             - >

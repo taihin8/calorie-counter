@@ -1,4 +1,4 @@
-﻿import flet as ft
+import flet as ft
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from database import (add_food_entry, get_daily_food, get_daily_calories,
@@ -21,35 +21,35 @@ def diary_screen(page: ft.Page):
     page.window.width = 480
     page.window.height = 800
     selected_date = str(date.today())
-    total = ft.Text("0 РєРєР°Р»", size=22, weight=ft.FontWeight.BOLD)
+    total = ft.Text("0 ккал", size=22, weight=ft.FontWeight.BOLD)
     date_text = ft.Text(selected_date, size=16, weight=ft.FontWeight.BOLD)
     food_list = ft.Column()
-    note_input = ft.TextField(label="РќРѕРІР°СЏ Р·Р°РјРµС‚РєР°", width=280, multiline=True)
+    note_input = ft.TextField(label="Новая заметка", width=280, multiline=True)
     notes_list = ft.Column()
 
-    # ---------- Р¦РµР»СЊ РєР°Р»РѕСЂРёР№ ----------
+    # ---------- Цель калорий ----------
     goal_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
     goal_left = ft.Text("", size=13)
     goal_bar = ft.ProgressBar(value=0, bar_height=10)
 
     def refresh_goal():
         goal, eaten, left = get_goal_progress(user['id'], selected_date)
-        goal_text.value = f"рџЋЇ Р¦РµР»СЊ: {goal:.0f} РєРєР°Р»"
-        # РїСЂРѕРіСЂРµСЃСЃ: РЅРµ РІС‹С€Рµ 1.0, РЅРѕ РїСЂРё РїРµСЂРµР±РѕСЂРµ РїРѕРєР°Р·С‹РІР°РµРј РїРѕР»РЅС‹Р№ + РєСЂР°СЃРЅС‹Р№
+        goal_text.value = f"🎯 Цель: {goal:.0f} ккал"
+        # прогресс: не выше 1.0, но при переборе показываем полный + красный
         ratio = min(eaten / goal, 1.0) if goal else 0
         goal_bar.value = ratio
         if left >= 0:
-            goal_left.value = f"РЎСЉРµРґРµРЅРѕ {eaten:.0f} В· РѕСЃС‚Р°Р»РѕСЃСЊ {left:.0f} РєРєР°Р»"
+            goal_left.value = f"Съедено {eaten:.0f} · осталось {left:.0f} ккал"
             goal_left.color = ft.Colors.GREEN
             goal_bar.color = ft.Colors.GREEN
         else:
-            goal_left.value = f"РџРµСЂРµР±РѕСЂ РЅР° {-left:.0f} РєРєР°Р»! рџљЁ"
+            goal_left.value = f"Перебор на {-left:.0f} ккал! 🚨"
             goal_left.color = ft.Colors.RED
             goal_bar.color = ft.Colors.RED
         page.update()
 
     def edit_goal(e):
-        field = ft.TextField(label="Р¦РµР»СЊ, РєРєР°Р» РІ РґРµРЅСЊ",
+        field = ft.TextField(label="Цель, ккал в день",
                              value=str(int(get_calorie_goal(user['id']))),
                              keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
 
@@ -63,18 +63,18 @@ def diary_screen(page: ft.Page):
                     pass
 
         dialog = ft.AlertDialog(
-            title=ft.Text("Р”РЅРµРІРЅР°СЏ С†РµР»СЊ РєР°Р»РѕСЂРёР№"),
+            title=ft.Text("Дневная цель калорий"),
             content=field,
             actions=[
-                ft.TextButton("РћС‚РјРµРЅР°", on_click=lambda e: page.pop_dialog()),
-                ft.ElevatedButton("РЎРѕС…СЂР°РЅРёС‚СЊ", on_click=lambda e: save(dialog)),
+                ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
             ]
         )
         page.show_dialog(dialog)
 
-    # ---------- РљР°Р»РµРЅРґР°СЂСЊ СЃ РїРѕРґСЃРІРµС‚РєРѕР№ ----------
+    # ---------- Календарь с подсветкой ----------
     def build_calendar_dialog():
-        """РњРµСЃСЏС‡РЅС‹Р№ РєР°Р»РµРЅРґР°СЂСЊ: Р·РµР»С‘РЅС‹Рµ РґР°С‚С‹ = РµСЃС‚СЊ Р·Р°РїРёСЃРё."""
+        """Месячный календарь: зелёные даты = есть записи."""
         cal_month = datetime.now().replace(day=1)
         marked = set(get_entry_dates(user['id']))
 
@@ -92,14 +92,14 @@ def diary_screen(page: ft.Page):
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
             weekdays = ft.Row([ft.Text(w, size=12, color=ft.Colors.GREY, expand=True, text_align=ft.TextAlign.CENTER)
-                               for w in ["РџРЅ", "Р’С‚", "РЎСЂ", "Р§С‚", "РџС‚", "РЎР±", "Р’СЃ"]])
+                               for w in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]])
 
-            first = cal_month.weekday()  # 0 = РїРѕРЅРµРґРµР»СЊРЅРёРє
+            first = cal_month.weekday()  # 0 = понедельник
             days_in_month = monthrange(cal_month.year, cal_month.month)[1]
             today = date.today()
 
             cells = []
-            # РїСѓСЃС‚С‹Рµ СЏС‡РµР№РєРё РґРѕ РїРµСЂРІРѕРіРѕ РґРЅСЏ
+            # пустые ячейки до первого дня
             cells += [ft.Container(width=34, height=34) for _ in range(first)]
             for day in range(1, days_in_month + 1):
                 d = date(cal_month.year, cal_month.month, day)
@@ -127,33 +127,33 @@ def diary_screen(page: ft.Page):
             dialog.content = render()
             page.update()
 
-        dialog = ft.AlertDialog(title=ft.Text("РљР°Р»РµРЅРґР°СЂСЊ"), content=render(),
-                                actions=[ft.TextButton("Р—Р°РєСЂС‹С‚СЊ", on_click=lambda e: page.pop_dialog())])
+        dialog = ft.AlertDialog(title=ft.Text("Календарь"), content=render(),
+                                actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())])
         return dialog
 
     def open_calendar(e):
         page.show_dialog(build_calendar_dialog())
 
-    # ---------- РџСЂРѕРґСѓРєС‚С‹ ----------
+    # ---------- Продукты ----------
     def refresh():
         entries = get_daily_food(user['id'], selected_date)
         food_list.controls.clear()
         for en in entries:
             food_list.controls.append(
                 ft.Row([
-                    ft.Text(f"{en['product_name']} вЂ” {en['calories']:.0f} РєРєР°Р»/100Рі ({en['grams']:.0f} Рі)",
+                    ft.Text(f"{en['product_name']} — {en['calories']:.0f} ккал/100г ({en['grams']:.0f} г)",
                             size=13, expand=True),
                     ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=15, padding=2,
-                                  tooltip="РР·РјРµРЅРёС‚СЊ",
+                                  tooltip="Изменить",
                                   on_click=lambda _, eid=en['id'], n=en['product_name'],
                                   c=en['calories'], g=en['grams']: edit_food_dialog(eid, n, c, g)),
                     ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=15, padding=2,
-                                  tooltip="РЈРґР°Р»РёС‚СЊ",
+                                  tooltip="Удалить",
                                   on_click=lambda _, eid=en['id']: delete_food(eid)),
                 ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
             )
         cal = get_daily_calories(user['id'], selected_date)
-        total.value = f"{cal:.0f} РєРєР°Р»"
+        total.value = f"{cal:.0f} ккал"
         date_text.value = selected_date
         page.update()
 
@@ -162,28 +162,28 @@ def diary_screen(page: ft.Page):
         refresh()
 
     def food_dialog(entry_id=None, name_val="", cal_val="", grams_val="100"):
-        name = ft.TextField(label="РќР°Р·РІР°РЅРёРµ", value=name_val, autofocus=entry_id is None)
-        cal_field = ft.TextField(label="РљР°Р»РѕСЂРёР№ РЅР° 100Рі", value=str(cal_val) if cal_val != "" else "",
+        name = ft.TextField(label="Название", value=name_val, autofocus=entry_id is None)
+        cal_field = ft.TextField(label="Калорий на 100г", value=str(cal_val) if cal_val != "" else "",
                                  keyboard_type=ft.KeyboardType.NUMBER)
-        grams_field = ft.TextField(label="Р“СЂР°РјРј", value=str(grams_val) if grams_val != "" else "100",
+        grams_field = ft.TextField(label="Грамм", value=str(grams_val) if grams_val != "" else "100",
                                    keyboard_type=ft.KeyboardType.NUMBER)
         status = ft.Text("", size=11, color=GREEN)
 
-        # РїРѕРґСЃРІРµС‚РєР° РїСЂРё Р·Р°РїРёСЃРё
+        # подсветка при записи
         def set_recording(active):
             name.fill_color = ft.Colors.GREEN_50 if active else None
-            name.label = "рџЋ™ Р“РѕРІРѕСЂРёС‚Рµ..." if active else "РќР°Р·РІР°РЅРёРµ"
+            name.label = "🎙 Говорите..." if active else "Название"
 
         def do_search(e):
-            """РС‰РµС‚ РєР°Р»РѕСЂРёРё РїРѕ РЅР°Р·РІР°РЅРёСЋ РІ Р±Р°Р·Рµ"""
+            """Ищет калории по названию в базе"""
             from services.food_db import guess_calories
             cal = guess_calories(name.value)
             if cal:
                 cal_field.value = str(cal).replace('.', ',')
-                status.value = f"РќР°Р№РґРµРЅРѕ: {cal:.0f} РєРєР°Р»/100Рі"
+                status.value = f"Найдено: {cal:.0f} ккал/100г"
                 status.color = GREEN
             else:
-                status.value = "РќРµ РЅР°С€С‘Р» РІ Р±Р°Р·Рµ, РІРїРёС€РёС‚Рµ РІСЂСѓС‡РЅСѓСЋ"
+                status.value = "Не нашёл в базе, впишите вручную"
                 status.color = ft.Colors.ORANGE
             page.update()
 
@@ -198,24 +198,24 @@ def diary_screen(page: ft.Page):
                         cal_field.value = str(c).replace('.', ',')
                     if g:
                         grams_field.value = str(g).replace('.', ',')
-                    # РµСЃР»Рё РєР°Р»РѕСЂРёР№ РЅРµ РЅР°Р·РІР°Р»Рё РіРѕР»РѕСЃРѕРј вЂ” РїРѕРїСЂРѕР±СѓРµРј СѓРіР°РґР°С‚СЊ РїРѕ РЅР°Р·РІР°РЅРёСЋ
+                    # если калорий не назвали голосом — попробуем угадать по названию
                     if n and not c:
                         from services.food_db import guess_calories
                         cal = guess_calories(n)
                         if cal:
                             cal_field.value = str(cal).replace('.', ',')
-                            status.value = f"РљР°Р»РѕСЂРёРё РёР· Р±Р°Р·С‹: {cal:.0f}/100Рі"
+                            status.value = f"Калории из базы: {cal:.0f}/100г"
                             status.color = GREEN
                 page.update()
 
             set_recording(True)
             status.value = ""
             page.update()
-            # СЃР»СѓС€Р°РµРј РјРёРєСЂРѕС„РѕРЅ
+            # слушаем микрофон
             recognize_async(page.run_thread, on_result)
 
-        mic_btn = ft.IconButton(ft.Icons.MIC, tooltip="РќР°РґРёРєС‚РѕРІР°С‚СЊ РїСЂРѕРґСѓРєС‚", on_click=voice)
-        find_btn = ft.TextButton("РќР°Р№С‚Рё РєР°Р»РѕСЂРёРё", on_click=do_search)
+        mic_btn = ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать продукт", on_click=voice)
+        find_btn = ft.TextButton("Найти калории", on_click=do_search)
 
         def save(dlg):
             page.pop_dialog()
@@ -229,14 +229,14 @@ def diary_screen(page: ft.Page):
                 refresh()
 
         dialog = ft.AlertDialog(
-            title=ft.Text("РџСЂРѕРґСѓРєС‚"),
+            title=ft.Text("Продукт"),
             content=ft.Column([
                 ft.Row([name, mic_btn], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 find_btn, cal_field, grams_field, status,
             ]),
             actions=[
-                ft.TextButton("РћС‚РјРµРЅР°", on_click=lambda e: page.pop_dialog()),
-                ft.ElevatedButton("РЎРѕС…СЂР°РЅРёС‚СЊ", on_click=lambda e: save(dialog)),
+                ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
             ]
         )
         page.show_dialog(dialog)
@@ -247,7 +247,7 @@ def diary_screen(page: ft.Page):
     def edit_food_dialog(eid, n, c, g):
         food_dialog(entry_id=eid, name_val=n, cal_val=c, grams_val=g)
 
-    # ---------- Р—Р°РјРµС‚РєРё ----------
+    # ---------- Заметки ----------
     def refresh_notes():
         notes = get_notes(user['id'])
         notes_list.controls.clear()
@@ -264,7 +264,7 @@ def diary_screen(page: ft.Page):
         page.update()
 
     def edit_note(nid, old_text):
-        field = ft.TextField(label="Р—Р°РјРµС‚РєР°", value=old_text, multiline=True, autofocus=True)
+        field = ft.TextField(label="Заметка", value=old_text, multiline=True, autofocus=True)
 
         def save(dlg):
             page.pop_dialog()
@@ -273,11 +273,11 @@ def diary_screen(page: ft.Page):
                 refresh_notes()
 
         dialog = ft.AlertDialog(
-            title=ft.Text("Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ Р·Р°РјРµС‚РєСѓ"),
+            title=ft.Text("Редактировать заметку"),
             content=field,
             actions=[
-                ft.TextButton("РћС‚РјРµРЅР°", on_click=lambda e: page.pop_dialog()),
-                ft.ElevatedButton("РЎРѕС…СЂР°РЅРёС‚СЊ", on_click=lambda e: save(dialog)),
+                ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
             ]
         )
         page.show_dialog(dialog)
@@ -292,17 +292,17 @@ def diary_screen(page: ft.Page):
             note_input.value = ""
             refresh_notes()
 
-    # ---------- Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ Р·Р°РјРµС‚РѕРє ----------
+    # ---------- Голосовой ввод заметок ----------
     def voice_input(e):
         def on_result(text):
             note_input.fill_color = None
-            note_input.label = "РќРѕРІР°СЏ Р·Р°РјРµС‚РєР°"
+            note_input.label = "Новая заметка"
             if text:
                 note_input.value = (note_input.value or "") + (" " + text if note_input.value else text)
             page.update()
 
         note_input.fill_color = ft.Colors.GREEN_50
-        note_input.label = "рџЋ™ РЎР»СѓС€Р°СЋ, РіРѕРІРѕСЂРёС‚Рµ..."
+        note_input.label = "🎙 Слушаю, говорите..."
         page.update()
         recognize_async(page.run_thread, on_result)
 
@@ -313,20 +313,20 @@ def diary_screen(page: ft.Page):
     page.add(
         ft.Column([
             ft.Row([
-                ft.Text(f"рџ‘¤ {user['username']}", size=14, color=ft.Colors.GREY),
-                ft.TextButton("Р’С‹Р№С‚Рё", on_click=lambda e: logout(page)),
+                ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
+                ft.TextButton("Выйти", on_click=lambda e: logout(page)),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Row([
                 date_text,
-                ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="РљР°Р»РµРЅРґР°СЂСЊ вЂ” Р·РµР»С‘РЅС‹Рµ РґРЅРё СЃ Р·Р°РїРёСЃСЏРјРё",
+                ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
                               on_click=open_calendar),
             ]),
-            # РџР°РЅРµР»СЊ С†РµР»Рё
+            # Панель цели
             ft.Container(
                 content=ft.Column([
                     ft.Row([
                         goal_text,
-                        ft.IconButton(ft.Icons.SETTINGS, icon_size=18, tooltip="РР·РјРµРЅРёС‚СЊ С†РµР»СЊ",
+                        ft.IconButton(ft.Icons.SETTINGS, icon_size=18, tooltip="Изменить цель",
                                       on_click=edit_goal),
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     goal_bar,
@@ -339,16 +339,16 @@ def diary_screen(page: ft.Page):
             total,
             ft.Divider(),
             ft.Row([
-                ft.Text("рџЌЅ РџСЂРѕРґСѓРєС‚С‹", size=16, weight=ft.FontWeight.BOLD),
-                ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Р”РѕР±Р°РІРёС‚СЊ РїСЂРѕРґСѓРєС‚", on_click=add_food),
+                ft.Text("🍽 Продукты", size=16, weight=ft.FontWeight.BOLD),
+                ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт", on_click=add_food),
             ]),
             food_list,
             ft.Divider(),
-            ft.Text("рџ“ќ Р—Р°РјРµС‚РєРё", size=16, weight=ft.FontWeight.BOLD),
+            ft.Text("📝 Заметки", size=16, weight=ft.FontWeight.BOLD),
             ft.Row([
                 note_input,
-                ft.IconButton(ft.Icons.MIC, tooltip="РќР°РґРёРєС‚РѕРІР°С‚СЊ", on_click=voice_input),
-                ft.IconButton(ft.Icons.SEND, tooltip="РЎРѕС…СЂР°РЅРёС‚СЊ", on_click=save_note),
+                ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать", on_click=voice_input),
+                ft.IconButton(ft.Icons.SEND, tooltip="Сохранить", on_click=save_note),
             ], spacing=2),
             notes_list,
         ], scroll=ft.ScrollMode.AUTO, spacing=6)

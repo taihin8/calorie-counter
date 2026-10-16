@@ -1,19 +1,22 @@
 import flet as ft
+from services.auth_store import get_last_user, save_last_user
 
 def login_screen(page: ft.Page):
     page.clean()
     page.title = "Calorie Counter"
-    page.window.width = 400
-    page.window.height = 700
+    page.window.width = 480
+    page.window.height = 800
 
-    username = ft.TextField(label="Логин", width=300, autofocus=True)
-    password = ft.TextField(label="Пароль", width=300, password=True)
+    last = get_last_user() or ""
+    username = ft.TextField(label="Логин", width=340, value=last, autofocus=not last)
+    password = ft.TextField(label="Пароль", width=340, password=True, autofocus=bool(last))
     error = ft.Text("", color=ft.Colors.RED)
 
     def do_login(e):
         from database import get_user
         user = get_user(username.value, password.value)
         if user:
+            save_last_user(username.value)
             page.session.store.set("user", user)
             from screens.diary import diary_screen
             diary_screen(page)

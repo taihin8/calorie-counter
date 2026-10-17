@@ -39,6 +39,14 @@ def diary_screen(page: ft.Page):
     note_input = ft.TextField(label="Новая заметка", expand=True, multiline=True)
     notes_list = ft.Column(spacing=0)
 
+    # скрытая кнопка-«приёмник» фокуса: перевод фокуса на неё снимает
+    # клавиатуру (поле теряет фокус), а сама кнопка невидима (1×1, opacity=0)
+    focus_sink = ft.IconButton(ft.Icons.CLOSE, opacity=0, width=1, height=1, padding=0,
+                               on_click=lambda e: None)
+
+    def dismiss_keyboard():
+        page.run_task(focus_sink.focus)
+
     # ---------- Цель калорий ----------
     goal_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
     goal_left = ft.Text("", size=13)
@@ -245,7 +253,7 @@ def diary_screen(page: ft.Page):
         refresh()
 
     def food_dialog(entry_id=None, name_val="", cal_val="", grams_val="100"):
-        name = ft.TextField(label="Название", value=name_val, autofocus=entry_id is None, expand=True)
+        name = ft.TextField(label="Название", value=name_val, autofocus=entry_id is None)
         cal_field = ft.TextField(label="Калорий на 100г", value=str(cal_val) if cal_val != "" else "",
                                  keyboard_type=ft.KeyboardType.NUMBER)
         grams_field = ft.TextField(label="Грамм", value=str(grams_val) if grams_val != "" else "100",
@@ -300,7 +308,6 @@ def diary_screen(page: ft.Page):
         mic_btn = ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать продукт", on_click=voice)
         find_btn = ft.TextButton("Найти калории", on_click=do_search,
                                  style=ft.ButtonStyle(visual_density=ft.VisualDensity.COMPACT))
-
         def save(dlg):
             if not name.value:
                 status.value = "Введите название"
@@ -331,9 +338,12 @@ def diary_screen(page: ft.Page):
             content=ft.Column([
                 name,
                 ft.Row([find_btn, mic_btn], spacing=2),
-                ft.Row([cal_field, grams_field], spacing=4),
+                ft.Row([
+                    ft.Container(cal_field, expand=True),
+                    ft.Container(grams_field, expand=True),
+                ], spacing=4),
                 status,
-            ], spacing=6),
+            ], spacing=6, tight=True),
             actions=[
                 ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
                 ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
@@ -422,8 +432,13 @@ def diary_screen(page: ft.Page):
     t.start()
 
     page.add(
-        ft.SafeArea(
-            content=ft.Column([
+        ft.GestureDetector(
+            expand=True,
+            on_tap_down=lambda e: dismiss_keyboard(),
+            content=ft.SafeArea(
+                expand=True,
+                content=ft.Column([
+                focus_sink,
                 ft.Row([
                     ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
                     ft.Row([
@@ -473,6 +488,7 @@ def diary_screen(page: ft.Page):
                 ], spacing=2),
                 notes_list,
             ], scroll=ft.ScrollMode.ADAPTIVE, expand=True, spacing=6),
+            )
         )
     )
 

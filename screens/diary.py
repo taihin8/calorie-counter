@@ -36,7 +36,7 @@ def diary_screen(page: ft.Page):
     total = ft.Text("0 ккал", size=22, weight=ft.FontWeight.BOLD)
     date_text = ft.Text(selected_date, size=16, weight=ft.FontWeight.BOLD)
     food_list = ft.Column(spacing=0)
-    note_input = ft.TextField(label="Новая заметка", width=280, multiline=True)
+    note_input = ft.TextField(label="Новая заметка", expand=True, multiline=True)
     notes_list = ft.Column(spacing=0)
 
     # ---------- Цель калорий ----------
@@ -87,7 +87,7 @@ def diary_screen(page: ft.Page):
     # ---------- Календарь с подсветкой ----------
     def build_calendar_dialog():
         """Месячный календарь: зелёные даты = есть записи."""
-        cal_month = datetime.now().replace(day=1)
+        cal_month = datetime.strptime(selected_date, "%Y-%m-%d").replace(day=1)
         marked = set(get_entry_dates(user['id']))
 
         def on_pick(d):
@@ -245,7 +245,7 @@ def diary_screen(page: ft.Page):
         refresh()
 
     def food_dialog(entry_id=None, name_val="", cal_val="", grams_val="100"):
-        name = ft.TextField(label="Название", value=name_val, autofocus=entry_id is None)
+        name = ft.TextField(label="Название", value=name_val, autofocus=entry_id is None, expand=True)
         cal_field = ft.TextField(label="Калорий на 100г", value=str(cal_val) if cal_val != "" else "",
                                  keyboard_type=ft.KeyboardType.NUMBER)
         grams_field = ft.TextField(label="Грамм", value=str(grams_val) if grams_val != "" else "100",
@@ -298,25 +298,42 @@ def diary_screen(page: ft.Page):
             recognize_async(page.run_thread, on_result)
 
         mic_btn = ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать продукт", on_click=voice)
-        find_btn = ft.TextButton("Найти калории", on_click=do_search)
+        find_btn = ft.TextButton("Найти калории", on_click=do_search,
+                                 style=ft.ButtonStyle(visual_density=ft.VisualDensity.COMPACT))
 
         def save(dlg):
+            if not name.value:
+                status.value = "Введите название"
+                status.color = ft.Colors.RED
+                page.update()
+                return
+            if not cal_field.value:
+                # не найден голосом — попробуем угадать по названию
+                from services.food_db import guess_calories
+                cal = guess_calories(name.value)
+                if not cal:
+                    status.value = "Укажите калории"
+                    status.color = ft.Colors.RED
+                    page.update()
+                    return
+                cal_field.value = str(cal).replace('.', ',')
             page.pop_dialog()
-            if name.value and cal_field.value:
-                cal = float(cal_field.value.replace(',', '.'))
-                gr = float(grams_field.value.replace(',', '.') or 100)
-                if entry_id is None:
-                    add_food_entry(user['id'], name.value, cal, gr, selected_date)
-                else:
-                    update_food_entry(entry_id, name.value, cal, gr)
-                refresh()
+            cal = float(cal_field.value.replace(',', '.'))
+            gr = float(grams_field.value.replace(',', '.') or 100)
+            if entry_id is None:
+                add_food_entry(user['id'], name.value, cal, gr, selected_date)
+            else:
+                update_food_entry(entry_id, name.value, cal, gr)
+            refresh()
 
         dialog = ft.AlertDialog(
             title=ft.Text("Продукт"),
             content=ft.Column([
-                ft.Row([name, mic_btn], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                find_btn, cal_field, grams_field, status,
-            ]),
+                name,
+                ft.Row([find_btn, mic_btn], spacing=2),
+                ft.Row([cal_field, grams_field], spacing=4),
+                status,
+            ], spacing=6),
             actions=[
                 ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog()),
                 ft.ElevatedButton("Сохранить", on_click=lambda e: save(dialog)),
@@ -405,56 +422,58 @@ def diary_screen(page: ft.Page):
     t.start()
 
     page.add(
-        ft.Column([
-            ft.Row([
-                ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
+        ft.SafeArea(
+            content=ft.Column([
                 ft.Row([
-                    ft.IconButton(ft.Icons.SYSTEM_UPDATE, icon_size=18, width=32, height=32, padding=0,
-                                  tooltip="Проверить обновления",
-                                  on_click=check_updates),
-                    ft.TextButton("Сменить", tooltip="Сменить пользователя",
-                                  on_click=lambda e: switch_user(page)),
-                    ft.TextButton("Выйти", on_click=lambda e: logout(page)),
-                ], spacing=0),
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([
-                date_text,
-                ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
-                              on_click=open_calendar),
-                ft.IconButton(ft.Icons.PALETTE, tooltip="Тема оформления",
-                              on_click=open_themes),
-            ]),
-            # Панель цели
-            ft.Container(
-                content=ft.Column([
+                    ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
                     ft.Row([
-                        goal_text,
-                        ft.IconButton(ft.Icons.SETTINGS, icon_size=18, tooltip="Изменить цель",
-                                      on_click=edit_goal),
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    goal_bar,
-                    goal_left,
+                        ft.IconButton(ft.Icons.SYSTEM_UPDATE, icon_size=18, width=32, height=32, padding=0,
+                                      tooltip="Проверить обновления",
+                                      on_click=check_updates),
+                        ft.TextButton("Сменить", tooltip="Сменить пользователя",
+                                      on_click=lambda e: switch_user(page)),
+                        ft.TextButton("Выйти", on_click=lambda e: logout(page)),
+                    ], spacing=0),
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Row([
+                    date_text,
+                    ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
+                                  on_click=open_calendar),
+                    ft.IconButton(ft.Icons.PALETTE, tooltip="Тема оформления",
+                                  on_click=open_themes),
                 ]),
-                bgcolor=ft.Colors.GREY_100,
-                border_radius=10,
-                padding=10,
-            ),
-            total,
-            ft.Divider(),
-            ft.Row([
-                ft.Text("🍽 Продукты", size=16, weight=ft.FontWeight.BOLD),
-                ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт", on_click=add_food),
-            ]),
-            food_list,
-            ft.Divider(),
-            ft.Text("📝 Заметки", size=16, weight=ft.FontWeight.BOLD),
-            ft.Row([
-                note_input,
-                ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать", on_click=voice_input),
-                ft.IconButton(ft.Icons.SEND, tooltip="Сохранить", on_click=save_note),
-            ], spacing=2),
-            notes_list,
-        ], scroll=ft.ScrollMode.AUTO, spacing=6)
+                # Панель цели
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            goal_text,
+                            ft.IconButton(ft.Icons.SETTINGS, icon_size=18, tooltip="Изменить цель",
+                                          on_click=edit_goal),
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        goal_bar,
+                        goal_left,
+                    ]),
+                    bgcolor=ft.Colors.GREY_100,
+                    border_radius=10,
+                    padding=10,
+                ),
+                total,
+                ft.Divider(),
+                ft.Row([
+                    ft.Text("🍽 Продукты", size=16, weight=ft.FontWeight.BOLD),
+                    ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт", on_click=add_food),
+                ]),
+                food_list,
+                ft.Divider(),
+                ft.Text("📝 Заметки", size=16, weight=ft.FontWeight.BOLD),
+                ft.Row([
+                    note_input,
+                    ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать", on_click=voice_input),
+                    ft.IconButton(ft.Icons.SEND, tooltip="Сохранить", on_click=save_note),
+                ], spacing=2),
+                notes_list,
+            ], scroll=ft.ScrollMode.ADAPTIVE, expand=True, spacing=6),
+        )
     )
 
 def logout(page):

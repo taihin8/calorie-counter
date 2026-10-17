@@ -1,7 +1,30 @@
 """Проверка новой версии через GitHub Releases."""
 import urllib.request
 import json
+import os
 from services.version import VERSION, GITHUB_REPO
+
+
+def download_apk(url, dest_path, on_progress=None, chunk=64 * 1024):
+    """Скачивает APK потоком, вызывая on_progress(скачано, всего_байт).
+    Возвращает число скачанных байт. Всего может быть 0 (нет Content-Length).
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": "calorie-counter"})
+    with urllib.request.urlopen(req, timeout=30) as resp, open(dest_path, "wb") as f:
+        try:
+            total = int(resp.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            total = 0
+        done = 0
+        while True:
+            buf = resp.read(chunk)
+            if not buf:
+                break
+            f.write(buf)
+            done += len(buf)
+            if on_progress:
+                on_progress(done, total)
+    return done
 
 
 def parse_version(tag):

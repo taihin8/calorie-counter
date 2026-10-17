@@ -1,7 +1,40 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from services.updater import parse_version, check_for_update
-from unittest.mock import patch
+from services.updater import parse_version, check_for_update, download_apk
+from unittest.mock import patch, MagicMock
+
+
+def test_download_apk_streams_and_reports_progress(tmp_path):
+    payload = b"x" * 150_000          # больше одного чанка 64 КБ
+    resp = MagicMock()
+    resp.headers = {"Content-Length": str(len(payload))}
+    resp.read.side_effect = [payload[:65536], payload[65536:131072],
+                             payload[131072:], b""]
+    resp.__enter__ = lambda s: resp
+    resp.__exit__ = lambda *a: False
+    seen = []
+    dest = tmp_path / "app.apk"
+    with patch("urllib.request.urlopen", return_value=resp):
+        n = download_apk("https://x/app.apk", str(dest), lambda d, t: seen.append((d, t)))
+    assert n == len(payload)
+    assert dest.read_bytes() == payload
+    assert seen[-1] == (len(payload), len(payload))     # финальный прогресс — 100%
+    assert seen == sorted(seen)                          # прогресс только растёт
+
+
+def test_download_apk_without_content_length(tmp_path):
+    resp = MagicMock()
+    resp.headers = {}
+    resp.read.side_effect = [b"abc", b""]
+    resp.__enter__ = lambda s: resp
+    resp.__exit__ = lambda *a: False
+    seen = []
+    dest = tmp_path / "app.apk"
+    with patch("urllib.request.urlopen", return_value=resp):
+        n = download_apk("https://x/app.apk", str(dest), lambda d, t: seen.append((d, t)))
+    assert n == 3
+    assert dest.read_bytes() == b"abc"
+    assert seen == [(3, 0)]                              # total=0 => шкала без процентов
 
 
 def test_parse_version():

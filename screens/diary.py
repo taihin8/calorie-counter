@@ -194,24 +194,20 @@ def diary_screen(page: ft.Page):
         def show_result(info):
             if info.get("error"):
                 content = ft.Text(f"Не удалось проверить: {info['error']}")
+                actions = [ft.TextButton("ОК", on_click=lambda e: page.pop_dialog())]
             elif info.get("has_update"):
-                def download(e2):
-                    page.pop_dialog()
-                    if info.get("download_url"):
-                        # открываем APK системным инсталлятором
-                        page.launch_url(info["download_url"])
-                    else:
-                        # нет APK в релизе — открываем страницу релизов
-                        from services.version import GITHUB_REPO
-                        page.launch_url(f"https://github.com/{GITHUB_REPO}/releases")
-
                 content = ft.Column([
                     ft.Text(f"Доступна новая версия {info['latest']}!"),
-                    ft.Text("Скачайте APK — Android предложит обновить приложение."),
+                    ft.Text("Скачаем APK внутри приложения и покажем, куда сохранили.",
+                            size=12),
+                    ft.Text("Если установка не запустится — скачайте через браузер.",
+                            size=11, color=GREY),
                 ])
                 actions = [
                     ft.TextButton("Позже", on_click=lambda e: page.pop_dialog()),
-                    ft.ElevatedButton("Скачать", on_click=download),
+                    ft.TextButton("Через браузер",
+                                  on_click=lambda e: open_in_browser(info)),
+                    ft.ElevatedButton("Скачать", on_click=lambda e: download_in_app(info)),
                 ]
             else:
                 from services.version import VERSION
@@ -221,6 +217,124 @@ def diary_screen(page: ft.Page):
             dialog = ft.AlertDialog(title=ft.Text("Обновление"), content=content,
                                     actions=actions)
             page.show_dialog(dialog)
+
+        def open_downloaded(path):
+            """Открывает скачанный APK. На Android нужен content:// через FileProvider
+            (file:// запрещён с API 24). launch_url не ставит MIME/разрешение URI,
+            поэтому открытие APK может не сработать — путь всегда виден в диалоге."""
+            import os
+            from pathlib import Path
+
+            if page.platform != ft.PagePlatform.ANDROID:
+                page.run_task(ft.UrlLauncher().launch_url, Path(path).as_uri())
+                return
+            # applicationId совпадает с AndroidManifest
+            from services.version import ANDROID_APP_ID as pkg
+            ext_root = "/storage/emulated/0"
+            data_root = f"/data/data/{pkg}"
+            if path.startswith(ext_root + "/"):
+                prefix, root = "external_files", ext_root
+            elif path.startswith(data_root + "/cache/"):
+                prefix, root = "cache", data_root + "/cache"
+            elif path.startswith(data_root + "/files/"):
+                prefix, root = "files", data_root + "/files"
+            else:
+                page.show_dialog(ft.SnackBar(ft.Text("Файл сохранён:\n" + path)))
+                return
+            rel = path[len(root) + 1:].replace(os.sep, "/")
+            page.run_task(ft.UrlLauncher().launch_url,
+                          f"content://{pkg}.provider/{prefix}/{rel}")
+
+        def open_in_browser(info):
+            page.pop_dialog()
+            url = info.get("download_url")
+            if url:
+                page.run_task(ft.UrlLauncher().launch_url, url)
+
+        def download_in_app(info):
+            page.pop_dialog()
+            # launch_url — это async def; вызываем через run_task (иначе корутина теряется)
+            page.run_task(run_download, info)
+
+        async def run_download(info):
+            import os
+            from services.updater import download_apk
+
+            url = info.get("download_url")
+            if not url:
+                from services.version import GITHUB_REPO
+                await ft.UrlLauncher().launch_url(
+                    f"https://github.com/{GITHUB_REPO}/releases")
+                return
+
+            # папка для сохранения: пробуем по очереди, последний вариант — домашняя
+            paths = ft.StoragePaths()
+            save_dir = None
+            for getter in (paths.get_downloads_directory,
+                           paths.get_application_documents_directory,
+                           paths.get_external_storage_directory):
+                try:
+                    save_dir = await getter()
+                except Exception:
+                    save_dir = None
+                if save_dir:
+                    break
+            if not save_dir:
+                save_dir = os.path.expanduser("~")
+            try:
+                os.makedirs(save_dir, exist_ok=True)
+            except Exception:
+                pass
+
+            dest = os.path.join(save_dir, f"calorie-counter-{info['latest'].lstrip('v')}.apk")
+
+            bar = ft.ProgressBar(value=0)
+            status = ft.Text("Подготовка…", size=12)
+            path_text = ft.Text("Сохраняем в: " + dest, size=11, selectable=True, color=GREY)
+            hint = ft.Text("", size=11)
+            open_btn = ft.TextButton(
+                "Открыть файл", icon=ft.Icons.OPEN_IN_NEW,
+                disabled=True,
+                on_click=lambda e: open_downloaded(dest),
+            )
+
+            dialog = ft.AlertDialog(
+                title=ft.Text("Скачивание обновления"),
+                content=ft.Column([bar, status, path_text, hint, open_btn],
+                                  spacing=6, tight=True),
+                actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())],
+            )
+            page.show_dialog(dialog)
+
+            # троттлинг обновлений шкалы: не чаще раза в 300 мс
+            last_tick = [0.0]
+
+            def on_progress(done, total):
+                now = time.time()
+                if now - last_tick[0] < 0.3 and done < total:
+                    return
+                last_tick[0] = now
+                bar.value = (done / total) if total else None
+                status.value = (f"{done / 1048576:.1f} МБ из {total / 1048576:.1f} МБ"
+                                if total else f"{done / 1048576:.1f} МБ")
+                page.update()
+
+            def worker():
+                try:
+                    download_apk(url, dest, on_progress)
+                    bar.value = 1
+                    status.value = "Готово"
+                    open_btn.disabled = False
+                    # Флет/Android не может сам показать инсталлятор с нужным MIME —
+                    # подсказываем, что делать дальше.
+                    hint.value = ("Если установка не открылась сама — нажмите «Открыть файл»\n"
+                                  "и следуйте подсказкам системы.")
+                    page.update()
+                except Exception as ex:
+                    status.value = f"Ошибка: {ex}"
+                    page.update()
+
+            page.run_thread(worker)
 
         page.run_thread(do_check)
 

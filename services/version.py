@@ -4,3 +4,7 @@ VERSION = "1.0.3"
 
 # Репозиторий для проверки обновлений (пустой — заполнить, когда создадите)
 GITHUB_REPO = "taihin8/calorie-counter"  # имя до первого пуша
+
+# applicationId сборки — должен совпадать с установленным APK,
+# иначе обновление встанет вторым приложением.
+ANDROID_APP_ID = "com.taihin8.calorie_counter"

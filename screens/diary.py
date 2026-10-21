@@ -159,6 +159,55 @@ def diary_screen(page: ft.Page):
         current = get_theme(user['id'])
         chips = ft.Row(wrap=True, spacing=4, run_spacing=4)
 
+    # ---------- Будильники ----------
+    def open_alarms(e):
+        """Список будильников: тумблер, расписание, кнопка добавить."""
+        from database import get_alarms, set_alarm_enabled, delete_alarm
+        from services.alarm_service import format_schedule, SOUNDS
+
+        container = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
+
+        def render():
+            container.controls.clear()
+            alarms = get_alarms(user['id'])
+            if not alarms:
+                container.controls.append(ft.Text("Нет будильников", color=GREY))
+            for a in alarms:
+                def remove(ev, aid=a['id']):
+                    delete_alarm(aid)
+                    render()
+
+                container.controls.append(
+                    ft.Row([
+                        ft.Switch(value=bool(a['enabled']),
+                                  on_change=lambda ev, aid=a['id'], cur=a['enabled']:
+                                      set_alarm_enabled(aid, 0 if cur else 1)),
+                        ft.Column([
+                            ft.Text(format_schedule(a), size=14),
+                            ft.Text(f"Звук: {SOUNDS[a['sound_id']]}", size=12, color=GREY),
+                        ], expand=True, spacing=0),
+                        ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=18,
+                                      tooltip="Удалить", on_click=remove),
+                    ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                )
+            page.update()
+
+        def add(e):
+            page.pop_dialog()
+            from screens.alarm_editor import alarm_editor_dialog
+            alarm_editor_dialog(page, user['id'], None, on_saved=render)
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Будильник"),
+            content=container,
+            actions=[
+                ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog()),
+                ft.ElevatedButton("＋ Добавить", on_click=add),
+            ],
+        )
+        page.show_dialog(dialog)
+        render()
+
         def choose(name):
             try:
                 set_theme(user['id'], name)
@@ -568,6 +617,8 @@ def diary_screen(page: ft.Page):
                     date_text,
                     ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Календарь — зелёные дни с записями",
                                   on_click=open_calendar),
+                    ft.IconButton(ft.Icons.NOTIFICATIONS_ACTIVE, tooltip="Будильник",
+                                  on_click=open_alarms),
                     ft.IconButton(ft.Icons.PALETTE, tooltip="Тема оформления",
                                   on_click=open_themes),
                 ]),

@@ -62,6 +62,17 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS alarms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            days TEXT NOT NULL DEFAULT '1111111',
+            start_time TEXT NOT NULL DEFAULT '08:00',
+            end_time TEXT NOT NULL DEFAULT '09:00',
+            interval_minutes INTEGER NOT NULL DEFAULT 60,
+            sound_id INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     ''')
     # миграция: добавляем колонку цели калорий
     cols = [r['name'] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
@@ -194,5 +205,52 @@ def get_theme(user_id):
 def set_theme(user_id, theme):
     conn = get_db()
     conn.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, user_id))
+    conn.commit()
+    conn.close()
+
+
+# ===== Будильники =====
+
+def get_alarms(user_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM alarms WHERE user_id = ? ORDER BY id", (user_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_alarm(alarm_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM alarms WHERE id = ?", (alarm_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def add_alarm(user_id, days, start_time, end_time, interval_minutes, sound_id, enabled=1):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO alarms (user_id, enabled, days, start_time, end_time, interval_minutes, sound_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, enabled, days, start_time, end_time, interval_minutes, sound_id))
+    conn.commit()
+    alarm_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return alarm_id
+
+def update_alarm(alarm_id, days, start_time, end_time, interval_minutes, sound_id, enabled):
+    conn = get_db()
+    conn.execute(
+        "UPDATE alarms SET days=?, start_time=?, end_time=?, interval_minutes=?, sound_id=?, enabled=? "
+        "WHERE id=?",
+        (days, start_time, end_time, interval_minutes, sound_id, enabled, alarm_id))
+    conn.commit()
+    conn.close()
+
+def set_alarm_enabled(alarm_id, enabled):
+    conn = get_db()
+    conn.execute("UPDATE alarms SET enabled=? WHERE id=?", (int(enabled), alarm_id))
+    conn.commit()
+    conn.close()
+
+def delete_alarm(alarm_id):
+    conn = get_db()
+    conn.execute("DELETE FROM alarms WHERE id=?", (alarm_id,))
     conn.commit()
     conn.close()

@@ -251,6 +251,8 @@ def diary_screen(page: ft.Page):
                             size=12),
                     ft.Text("Если установка не запустится — скачайте через браузер.",
                             size=11, color=GREY),
+                    ft.Text("Ссылка для скачивания:", size=11, color=GREY),
+                    ft.Text(info.get("download_url") or "", size=11, selectable=True),
                 ])
                 actions = [
                     ft.TextButton("Позже", on_click=lambda e: page.pop_dialog()),

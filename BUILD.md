@@ -13,9 +13,13 @@ cd "C:\Users\TEST\OpenideProjects\Daily_Journal"
   --org "com.taihin8" `
   --company "Calorie Counter" `
   --build-version "X.Y.Z" `
+  --android-permissions "android.permission.REQUEST_INSTALL_PACKAGES=true" `
   --clear-cache `
   --yes
 ```
+
+`REQUEST_INSTALL_PACKAGES` — без неё Android 8+ молча блокирует установку APK
+из приложения (кнопка «Установить» в системном инсталляторе не работает).
 
 ## Обязательная проверка пакета (после КАЖДОЙ сборки)
 

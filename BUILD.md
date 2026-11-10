@@ -41,6 +41,51 @@ cd "C:\Users\TEST\OpenideProjects\Daily_Journal"
   `Copy-Item build\flutter\build\app\outputs\flutter-apk\app-release.apk build\apk\calorie-counter-<ver>.apk -Force`
 - Сборка долгая (~2–3 мин прогретого Gradle) — запускать фоновым джобом.
 
+## Проверка APK в эмуляторе (без телефона)
+
+AVD `nova13`: 1224×2700, 440 dpi, Android 15 без Google Play (как Huawei nova 13).
+
+```powershell
+.\test_apk.bat                     # возьмёт build\apk\calorie-counter.apk
+.\test_apk.bat путь\к\app.apk
+```
+
+Скрипт поднимает эмулятор, ставит APK (`adb install -r -g`) и запускает приложение.
+
+Грабли:
+- Без `-feature -Wifi,-BluetoothEmulation,-VirtioWifi` загрузка виснет: падает `netsimd.exe`, adb навсегда показывает `offline`.
+- Ускоритель — AEHD (`C:\Android\sdk\extras\google\Android_Emulator_Hypervisor_Driver`); старая служба HAXM остановлена — конфликтует.
+- Модель не подменяется: `ro.product.model` остаётся `Android SDK built for x86_64`.
+
+Замеры: установка APK 2,5 с, холодный старт 50 с, из снапшота 30 с.
+
+## Сборка, когда Flutter/AppData вне рабочей папки (песочница DSH)
+
+Если сборка запускается из-под DSH, дочерние процессы Python не могут писать
+вне рабочей папки: `flet build apk` зависает на «Initializing apk build...»,
+потому что `flutter.BAT` не открывает `C:\flutter\bin\cache\lockfile`.
+
+Рабочий обход — собирать скриптом, где всё нужное лежит внутри проекта:
+
+1. Скопировать Flutter в `.tmp\flutter` и pub-кэш в `.tmp\pub` (один раз).
+2. В скрипте задать окружение:
+   - `FLUTTER_ROOT`, `PUB_CACHE`, `GRADLE_USER_HOME` — внутрь `.tmp\`;
+   - `APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, `HOME`, `TEMP`, `TMP` — внутрь `.tmp\`;
+   - `FLET_CACHE_DIR=C:\Users\<user>\.flet\cache` — там уже лежат
+     `python-android-dart-*.tar.gz`, иначе Gradle идёт в github и падает по таймауту;
+   - `JAVA_TOOL_OPTIONS=-Duser.home=<проект>\.tmp\home` и копия
+     `debug.keystore` в `.tmp\home\.android\` — иначе `validateSigningRelease`
+     не может создать `.lock` рядом с ключом;
+   - `--exclude .tmp` в `flet build` — иначе упаковщик копирует сам себя.
+3. Отключить скачивание дистрибутива Python, если сеть нестабильна: положить
+   в `GRADLE_USER_HOME/init.d/` скрипт, выключающий задачи `downloadDistArchive_*`.
+
+Важно: перед повторной сборкой убить Gradle-демоны (`Stop-Process java`), иначе
+они переиспользуют старое окружение и падают на keystore.
+
+Место: копия Flutter (~1.5 ГБ) + Gradle-кэш (~4.5 ГБ) + сборка. При нехватке
+диска `pip` падает с `[Errno 28] No space left on device`.
+
 ## Тесты перед сборкой
 
 ```powershell

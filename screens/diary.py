@@ -217,13 +217,17 @@ def diary_screen(page: ft.Page):
                     delete_alarm(aid)
                     render()
 
+                row_info = [ft.Text(format_schedule(a), size=14)]
+                if a.get('last_fired'):
+                    row_info.append(ft.Text(f"Последний звонок: {a['last_fired'][11:16]}",
+                                            size=11, color=GREY))
                 container.controls.append(
                     ft.Row([
                         ft.Switch(value=bool(a['enabled']),
                                   on_change=lambda ev, aid=a['id'], cur=a['enabled']:
                                       set_alarm_enabled(aid, 0 if cur else 1)),
                         ft.Column([
-                            ft.Text(format_schedule(a), size=14),
+                            *row_info,
                             ft.Text(f"Звук: {SOUNDS[a['sound_id']]}", size=12, color=GREY),
                         ], expand=True, spacing=0),
                         ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=18,
@@ -247,6 +251,7 @@ def diary_screen(page: ft.Page):
         )
         page.show_dialog(dialog)
         render()
+        alarms_refresh[0] = render
 
     # ---------- Обновления ----------
     def check_updates(e):
@@ -601,6 +606,40 @@ def diary_screen(page: ft.Page):
     refresh()
     refresh_notes()
     refresh_goal()
+
+    # ---------- Будильник: фоновый опрос расписания ----------
+    def _ring(alarm, point):
+        """Вызывается из потока планировщика — звонок показываем в UI-потоке."""
+        def show():
+            try:
+                from screens.alarm_ring import show_ring
+                show_ring(page, alarm, point)
+                refresh_alarms_if_open()
+            except Exception as ex:
+                _log_error("alarm_ring", ex)
+                # на Android stderr не виден, поэтому причину показываем в UI
+                try:
+                    page.show_dialog(ft.AlertDialog(
+                        title=ft.Text("Ошибка будильника"),
+                        content=ft.Text(f"{type(ex).__name__}: {ex}"),
+                        actions=[ft.TextButton("ОК", on_click=lambda e: page.pop_dialog())],
+                    ))
+                except Exception:
+                    pass
+        page.run_thread(show)
+
+    def refresh_alarms_if_open():
+        """Обновляет открытый список будильников, если он показан."""
+        try:
+            if alarms_refresh[0]:
+                alarms_refresh[0]()
+        except Exception:
+            pass
+
+    alarms_refresh = [None]
+    from services.alarm_runner import AlarmRunner
+    _runner = AlarmRunner(user['id'], _ring)
+    _runner.start()
 
     # автообновление каждые 10 сек — чтобы подтягивать данные с телефона
     def _auto_refresh():

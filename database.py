@@ -71,6 +71,7 @@ def init_db():
             end_time TEXT NOT NULL DEFAULT '09:00',
             interval_minutes INTEGER NOT NULL DEFAULT 60,
             sound_id INTEGER NOT NULL DEFAULT 0,
+            last_fired TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
     ''')
@@ -80,6 +81,10 @@ def init_db():
         conn.execute("ALTER TABLE users ADD COLUMN calorie_goal REAL DEFAULT 2000")
     if 'theme' not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'light'")
+    # миграция: отметка последнего звонка (чтобы не звонить дважды)
+    alarm_cols = [r['name'] for r in conn.execute("PRAGMA table_info(alarms)").fetchall()]
+    if 'last_fired' not in alarm_cols:
+        conn.execute("ALTER TABLE alarms ADD COLUMN last_fired TEXT")
     conn.commit()
     conn.close()
 
@@ -246,6 +251,12 @@ def update_alarm(alarm_id, days, start_time, end_time, interval_minutes, sound_i
 def set_alarm_enabled(alarm_id, enabled):
     conn = get_db()
     conn.execute("UPDATE alarms SET enabled=? WHERE id=?", (int(enabled), alarm_id))
+    conn.commit()
+    conn.close()
+
+def mark_alarm_fired(alarm_id, fired_at):
+    conn = get_db()
+    conn.execute("UPDATE alarms SET last_fired=? WHERE id=?", (fired_at, alarm_id))
     conn.commit()
     conn.close()
 

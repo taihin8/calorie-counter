@@ -14,12 +14,30 @@ from services.themes import THEMES, apply_theme
 GREEN = ft.Colors.GREEN_400
 GREY = ft.Colors.GREY_300
 
+def _shift_month(month_first, delta):
+    """Первый день месяца ±delta месяцев (delta = -1 или +1)."""
+    # −1: день назад от 1-го = 1-е прошлого месяца; +1: 1-е + 32 дня = 1-е следующего
+    shifted = month_first - timedelta(days=1) if delta < 0 else month_first + timedelta(days=32)
+    return shifted.replace(day=1)
+
 def _log_error(context, ex):
-    """Пишет ошибку в instance/crash.log, чтобы не терять причину."""
-    import os, traceback
-    path = os.path.join(os.path.dirname(__file__), '..', 'instance', 'crash.log')
-    with open(path, 'a', encoding='utf-8') as f:
-        f.write(f"[{context}] {ex}\n{traceback.format_exc()}\n")
+    """Пишет ошибку в stdout и, если можно, в instance/crash.log.
+
+    На Android каталог instance/ недоступен — раньше запись падала и причина
+    терялась целиком, поэтому сначала всегда печатаем в stdout.
+    """
+    import os, sys, traceback
+    text = f"[{context}] {ex}\n{traceback.format_exc()}"
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except Exception:
+        pass
+    try:
+        path = os.path.join(os.path.dirname(__file__), '..', 'instance', 'crash.log')
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(text + "\n")
+    except OSError:
+        pass  # на Android писать некуда — уже вывели в stdout
 
 def diary_screen(page: ft.Page):
     user = page.session.store.get("user")
@@ -143,7 +161,7 @@ def diary_screen(page: ft.Page):
 
         def change_month(delta):
             nonlocal cal_month
-            cal_month = (cal_month.replace(day=28) + timedelta(days=delta*7)).replace(day=1)
+            cal_month = _shift_month(cal_month, delta)
             dialog.content = render()
             page.update()
 
@@ -158,6 +176,28 @@ def diary_screen(page: ft.Page):
     def open_themes(e):
         current = get_theme(user['id'])
         chips = ft.Row(wrap=True, spacing=4, run_spacing=4)
+
+        def choose(name):
+            try:
+                set_theme(user['id'], name)
+                page.pop_dialog()
+                apply_theme(page, name)
+            except Exception as ex:
+                # не даём приложению упасть на смене темы
+                _log_error("theme", ex)
+
+        for name, (label, _, _) in THEMES.items():
+            chips.controls.append(
+                ft.Chip(label=ft.Text(label), selected=(name == current),
+                        on_click=lambda e, n=name: choose(n))
+            )
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Тема оформления"),
+            content=chips,
+            actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())],
+        )
+        page.show_dialog(dialog)
 
     # ---------- Будильники ----------
     def open_alarms(e):
@@ -207,29 +247,6 @@ def diary_screen(page: ft.Page):
         )
         page.show_dialog(dialog)
         render()
-
-        def choose(name):
-            try:
-                set_theme(user['id'], name)
-                page.pop_dialog()
-                apply_theme(page, name)
-            except Exception as ex:
-                # не даём приложению упасть на смене темы
-                import traceback
-                _log_error("theme", ex)
-
-        for name, (label, _, _) in THEMES.items():
-            chips.controls.append(
-                ft.Chip(label=ft.Text(label), selected=(name == current),
-                        on_click=lambda e, n=name: choose(n))
-            )
-
-        dialog = ft.AlertDialog(
-            title=ft.Text("Тема оформления"),
-            content=chips,
-            actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())],
-        )
-        page.show_dialog(dialog)
 
     # ---------- Обновления ----------
     def check_updates(e):

@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Заметка: локальная сборка (BUILD.md) — основной путь; этот workflow
+      # держим рабочим, чтобы релиз можно было собрать и из CI.
       - name: Build APK in Flet container
         run: |
           docker pull ghcr.io/flet-dev/flet-build:latest
@@ -25,12 +27,14 @@ jobs:
               python3 -m flet build apk
                 --project \"calorie-counter\"
                 --product \"Calorie Counter\"
-                --org \"com.example\"
+                --org \"com.taihin8\"
                 --company \"Calorie Counter\"
-                --build-name \"\$(echo \${GITHUB_REF_NAME#v})\"
+                --build-version \"\$(echo \${GITHUB_REF_NAME#v})\"
+                --android-permissions \"android.permission.REQUEST_INSTALL_PACKAGES=true\"
+                --yes
             "
 
-      - name: Upload APK
+      - name: Upload APK to release
         run: gh release create "${GITHUB_REF_NAME}" build/apk/*.apk --title "${GITHUB_REF_NAME}" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

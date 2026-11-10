@@ -7,7 +7,8 @@ from database import (add_food_entry, get_daily_food, get_daily_calories,
                       add_note, get_notes, delete_note, update_note,
                       delete_food_entry, update_food_entry, get_entry_dates,
                       get_calorie_goal, set_calorie_goal, get_goal_progress,
-                      get_theme, set_theme)
+                      get_theme, set_theme, get_note_font_size, set_note_font_size,
+                      NOTE_FONT_SIZES)
 from services.speech import recognize_async, parse_food_text
 from services.themes import THEMES, apply_theme
 
@@ -545,20 +546,53 @@ def diary_screen(page: ft.Page):
         food_dialog(entry_id=eid, name_val=n, cal_val=c, grams_val=g)
 
     # ---------- Заметки ----------
+    note_font = [get_note_font_size(user['id'])]   # текущий размер шрифта
+
     def refresh_notes():
         notes = get_notes(user['id'])
         notes_list.controls.clear()
+        size = note_font[0]
         for n in notes[:20]:
+            # текст переносится целиком: раньше обрезался на 45 символах
+            # и прочитать заметку можно было только открыв её на изменение
             notes_list.controls.append(
                 ft.Row([
-                    ft.Text(f"[{n['date']}] {n['text'][:45]}", size=11, expand=True),
-                    ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26, height=26, padding=0,
-                                  on_click=lambda _, nid=n['id'], txt=n['text']: edit_note(nid, txt)),
-                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=14, width=26, height=26, padding=0,
-                                  on_click=lambda _, nid=n['id']: delete_and_refresh(nid)),
-                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                    ft.Text(f"[{n['date']}] {n['text']}", size=size, expand=True,
+                            no_wrap=False, selectable=True),
+                    ft.Column([
+                        ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26, height=26, padding=0,
+                                      tooltip="Изменить",
+                                      on_click=lambda _, nid=n['id'], txt=n['text']: edit_note(nid, txt)),
+                        ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=14, width=26, height=26, padding=0,
+                                      tooltip="Удалить",
+                                      on_click=lambda _, nid=n['id']: delete_and_refresh(nid)),
+                    ], spacing=0),
+                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.START)
             )
         page.update()
+
+    def set_font(size):
+        """Меняет размер шрифта заметок и запоминает выбор."""
+        note_font[0] = size
+        try:
+            set_note_font_size(user['id'], size)
+        except Exception as ex:
+            _log_error("note_font", ex)
+        refresh_notes()
+
+    def choose_font(e):
+        chips = ft.Row(wrap=True, spacing=4, run_spacing=4)
+        for size in NOTE_FONT_SIZES:
+            chips.controls.append(
+                ft.Chip(label=ft.Text(f"{size}"),
+                        selected=(size == note_font[0]),
+                        on_click=lambda ev, s=size: (set_font(s), page.pop_dialog()))
+            )
+        page.show_dialog(ft.AlertDialog(
+            title=ft.Text("Размер шрифта заметок"),
+            content=chips,
+            actions=[ft.TextButton("Закрыть", on_click=lambda e: page.pop_dialog())],
+        ))
 
     def edit_note(nid, old_text):
         field = ft.TextField(label="Заметка", value=old_text, multiline=True, autofocus=True)
@@ -723,6 +757,13 @@ def diary_screen(page: ft.Page):
                                     ft.IconButton(ft.Icons.SEND, tooltip="Сохранить",
                                                   on_click=save_note),
                                 ], spacing=2),
+                                ft.Row([
+                                    ft.Text("📝 Заметки", size=14,
+                                            weight=ft.FontWeight.BOLD, expand=True),
+                                    ft.IconButton(ft.Icons.FORMAT_SIZE,
+                                                  tooltip="Размер шрифта заметок",
+                                                  icon_size=18, on_click=choose_font),
+                                ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                 notes_list,
                             ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
                         ]),

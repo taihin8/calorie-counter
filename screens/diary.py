@@ -57,6 +57,7 @@ def diary_screen(page: ft.Page):
     food_list = ft.Column(spacing=0)
     note_input = ft.TextField(label="Новая заметка", expand=True, multiline=True)
     notes_list = ft.Column(spacing=0)
+    reminders_list = ft.Column(spacing=0)
 
     # скрытая кнопка-«приёмник» фокуса: перевод фокуса на неё снимает
     # клавиатуру (поле теряет фокус), а сама кнопка невидима (1×1, opacity=0)
@@ -617,6 +618,129 @@ def diary_screen(page: ft.Page):
         delete_note(nid)
         refresh_notes()
 
+    # ---------- Напоминания о памятных днях ----------
+    def refresh_reminders():
+        from database import get_reminders, delete_reminder
+        from services.reminder_service import days_until, next_occurrence
+        reminders_list.controls.clear()
+        items = get_reminders(user['id'])
+        if not items:
+            reminders_list.controls.append(
+                ft.Text("Нет напоминаний", size=12, color=GREY))
+        today = date.today()
+        for r in sorted(items, key=lambda x: days_until(x["remind_date"],
+                                                        bool(x["annual"]), today)):
+            days = days_until(r["remind_date"], bool(r["annual"]), today)
+            if days == 0:
+                when = "сегодня"
+            elif days == 1:
+                when = "завтра"
+            else:
+                when = f"через {days} дн."
+            try:
+                shown_date = next_occurrence(r["remind_date"], bool(r["annual"]), today)
+                date_txt = shown_date.strftime("%d.%m.%Y")
+            except Exception:
+                date_txt = r["remind_date"]
+            repeat = " · каждый год" if r["annual"] else ""
+
+            def remove(ev, rid=r['id']):
+                delete_reminder(rid)
+                refresh_reminders()
+
+            reminders_list.controls.append(
+                ft.Row([
+                    ft.Column([
+                        ft.Text(r["text"], size=note_font[0], no_wrap=False),
+                        ft.Text(f"{date_txt} · {when}{repeat}", size=10, color=GREY),
+                    ], expand=True, spacing=0),
+                    ft.Column([
+                        ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26,
+                                      height=26, padding=0, tooltip="Изменить",
+                                      on_click=lambda _, rid=r['id']: reminder_dialog(rid)),
+                        ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=14, width=26,
+                                      height=26, padding=0, tooltip="Удалить",
+                                      on_click=remove),
+                    ], spacing=0),
+                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.START)
+            )
+        page.update()
+
+    def reminder_dialog(reminder_id=None):
+        """Добавление (id=None) или правка напоминания."""
+        from database import get_reminder, add_reminder, update_reminder, delete_reminder
+        from services.reminder_service import validate_reminder
+
+        existing = get_reminder(reminder_id) if reminder_id else None
+        date_field = ft.TextField(
+            label="Дата (ГГГГ-ММ-ДД)",
+            value=existing["remind_date"] if existing else date.today().isoformat(),
+            keyboard_type=ft.KeyboardType.DATETIME)
+        text_field = ft.TextField(
+            label="Описание", value=existing["text"] if existing else "",
+            autofocus=reminder_id is None)
+        annual_sw = ft.Switch(label="Каждый год",
+                              value=bool(existing["annual"]) if existing else True)
+        error = ft.Text("", size=11, color=ft.Colors.RED)
+
+        def pick_date(e):
+            """Календарь для выбора даты — не надо набирать вручную."""
+            def on_change(ev):
+                if picker.value:
+                    date_field.value = picker.value.strftime("%Y-%m-%d")
+                page.pop_dialog()
+                page.update()
+
+            picker = ft.DatePicker(
+                value=date_field.value,
+                first_date=date(1900, 1, 1),
+                last_date=date(2100, 12, 31),
+                on_change=on_change,
+            )
+            page.show_dialog(picker)
+
+        def save(e):
+            try:
+                validate_reminder(date_field.value, text_field.value)
+            except ValueError as ex:
+                error.value = str(ex)
+                page.update()
+                return
+            page.pop_dialog()
+            if reminder_id:
+                update_reminder(reminder_id, date_field.value, text_field.value.strip(),
+                                int(annual_sw.value))
+            else:
+                add_reminder(user['id'], date_field.value, text_field.value.strip(),
+                             int(annual_sw.value))
+            refresh_reminders()
+
+        def remove(e):
+            page.pop_dialog()
+            if reminder_id:
+                delete_reminder(reminder_id)
+            refresh_reminders()
+
+        actions = [ft.TextButton("Отмена", on_click=lambda e: page.pop_dialog())]
+        if reminder_id:
+            actions.append(ft.TextButton("Удалить", on_click=remove))
+        actions.append(ft.ElevatedButton("Сохранить", on_click=save))
+
+        page.show_dialog(ft.AlertDialog(
+            title=ft.Text("Напоминание" if not reminder_id else "Изменить напоминание"),
+            content=ft.Column([
+                ft.Row([date_field,
+                        ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Выбрать дату",
+                                      on_click=pick_date)], spacing=2),
+                text_field,
+                annual_sw,
+                ft.Text("Окно появится за день до даты и в саму дату.", size=10,
+                        color=GREY),
+                error,
+            ], spacing=6, tight=True),
+            actions=actions,
+        ))
+
     def save_note(e):
         if note_input.value:
             add_note(user['id'], note_input.value, selected_date)
@@ -640,6 +764,7 @@ def diary_screen(page: ft.Page):
     refresh()
     refresh_notes()
     refresh_goal()
+    refresh_reminders()
 
     # ---------- Будильник: фоновый опрос расписания ----------
     def _ring(alarm, point):
@@ -674,6 +799,30 @@ def diary_screen(page: ft.Page):
     from services.alarm_runner import AlarmRunner
     _runner = AlarmRunner(user['id'], _ring)
     _runner.start()
+
+    # ---------- Напоминания: проверка дат ----------
+    def _remind(reminder, stage):
+        """Вызывается из потока планировщика — окно показываем в UI-потоке."""
+        def show():
+            try:
+                from services.reminder_service import reminder_text
+                text = reminder_text(reminder, stage)
+                title = "🎂 Напоминание" if stage == "day" else "🎂 Скоро"
+                page.show_dialog(ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text(title),
+                    content=ft.Text(text, size=15),
+                    actions=[ft.ElevatedButton("Понятно",
+                                               on_click=lambda e: page.pop_dialog())],
+                ))
+                refresh_reminders()
+            except Exception as ex:
+                _log_error("reminder", ex)
+        page.run_thread(show)
+
+    from services.reminder_runner import ReminderRunner
+    _reminder_runner = ReminderRunner(user['id'], _remind)
+    _reminder_runner.start()
 
     # автообновление каждые 10 сек — чтобы подтягивать данные с телефона
     def _auto_refresh():
@@ -716,12 +865,13 @@ def diary_screen(page: ft.Page):
                 ]),
                 # Вкладки: калькулятор калорий и заметки
                 ft.Tabs(
-                    length=2,
+                    length=3,
                     expand=True,
                     content=ft.Column([
                         ft.TabBar(tabs=[
                             ft.Tab(label="Калькулятор", icon=ft.Icons.RESTAURANT_MENU),
                             ft.Tab(label="Заметки", icon=ft.Icons.EDIT_NOTE),
+                            ft.Tab(label="Напоминания", icon=ft.Icons.CAKE),
                         ]),
                         ft.TabBarView(expand=True, controls=[
                             # --- вкладка 1: цель и продукты ---
@@ -765,6 +915,19 @@ def diary_screen(page: ft.Page):
                                                   icon_size=18, on_click=choose_font),
                                 ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                 notes_list,
+                            ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
+                            # --- вкладка 3: напоминания ---
+                            ft.Column([
+                                ft.Row([
+                                    ft.Text("🎂 Памятные дни", size=14,
+                                            weight=ft.FontWeight.BOLD, expand=True),
+                                    ft.IconButton(ft.Icons.ADD_CIRCLE,
+                                                  tooltip="Добавить напоминание",
+                                                  on_click=lambda e: reminder_dialog()),
+                                ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                ft.Text("Всплывающее окно появится за день до даты "
+                                        "и в саму дату.", size=10, color=GREY),
+                                reminders_list,
                             ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
                         ]),
                     ], expand=True, spacing=0),

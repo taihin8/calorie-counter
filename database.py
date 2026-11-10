@@ -74,6 +74,15 @@ def init_db():
             last_fired TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            remind_date TEXT NOT NULL,
+            text TEXT NOT NULL,
+            annual INTEGER NOT NULL DEFAULT 1,
+            last_stage TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     ''')
     # миграция: добавляем колонку цели калорий
     cols = [r['name'] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
@@ -286,5 +295,58 @@ def mark_alarm_fired(alarm_id, fired_at):
 def delete_alarm(alarm_id):
     conn = get_db()
     conn.execute("DELETE FROM alarms WHERE id=?", (alarm_id,))
+    conn.commit()
+    conn.close()
+
+
+# ===== Напоминания о памятных днях =====
+
+def get_reminders(user_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM reminders WHERE user_id = ? ORDER BY remind_date", (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_reminder(reminder_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM reminders WHERE id = ?", (reminder_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def add_reminder(user_id, remind_date, text, annual=1):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO reminders (user_id, remind_date, text, annual) VALUES (?, ?, ?, ?)",
+        (user_id, remind_date, text, int(annual)))
+    conn.commit()
+    reminder_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return reminder_id
+
+
+def update_reminder(reminder_id, remind_date, text, annual):
+    conn = get_db()
+    conn.execute(
+        "UPDATE reminders SET remind_date=?, text=?, annual=? WHERE id=?",
+        (remind_date, text, int(annual), reminder_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_reminder(reminder_id):
+    conn = get_db()
+    conn.execute("DELETE FROM reminders WHERE id=?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+
+def mark_reminder_shown(reminder_id, stage):
+    """Отмечает, что окно этой стадии уже показано (чтобы не повторяться)."""
+    conn = get_db()
+    conn.execute("UPDATE reminders SET last_stage=? WHERE id=?", (stage, reminder_id))
     conn.commit()
     conn.close()

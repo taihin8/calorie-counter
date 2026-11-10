@@ -83,3 +83,29 @@ def test_reminder_text_mentions_when():
     today = date(2026, 11, 10)
     assert "сегодня" in reminder_text(_r("2000-11-10"), "day", today)
     assert "завтра" in reminder_text(_r("2000-11-11"), "lead", today)
+
+def test_next_fire_time_moves_past_to_next_year():
+    """Прошедшее сегодня время не теряется: переносится на следующий год.
+
+    Раньше такое уведомление не планировалось вовсе — система не показывает
+    уведомление в прошлом, а следующего года никто не ставил.
+    """
+    from datetime import datetime
+    from services.reminder_service import next_fire_time
+
+    now = datetime(2026, 11, 10, 12, 0)      # полдень: 9:00 уже прошло
+    got = next_fire_time("2000-11-10", True, 0, now=now)
+    assert got == datetime(2027, 11, 10, 9, 0)
+
+    # если время ещё не наступило — планируем сегодня
+    now = datetime(2026, 11, 10, 7, 0)
+    assert next_fire_time("2000-11-10", True, 0, now=now) == datetime(2026, 11, 10, 9, 0)
+
+
+def test_next_fire_time_returns_none_for_past_one_off():
+    """Разовое напоминание в прошлом планировать некуда."""
+    from datetime import datetime
+    from services.reminder_service import next_fire_time
+    now = datetime(2026, 11, 10, 12, 0)
+    assert next_fire_time("2020-03-05", False, 0, now=now) is None
+    assert next_fire_time("2026-11-10", False, 0, now=now) is None

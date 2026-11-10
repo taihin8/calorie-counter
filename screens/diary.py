@@ -619,6 +619,18 @@ def diary_screen(page: ft.Page):
         refresh_notes()
 
     # ---------- Напоминания о памятных днях ----------
+    # ссылка на сервис уведомлений: заполняется при старте, нужна для перепланирования
+    notifications_ref = [None]
+
+    def refresh_notifications():
+        """Пересоздаёт системные уведомления после правки напоминаний."""
+        svc = notifications_ref[0]
+        if svc is not None:
+            try:
+                svc.reschedule()
+            except Exception as ex:
+                _log_error("notifications", ex)
+
     def refresh_reminders():
         from database import get_reminders, delete_reminder
         from services.reminder_service import days_until, next_occurrence
@@ -647,6 +659,7 @@ def diary_screen(page: ft.Page):
             def remove(ev, rid=r['id']):
                 delete_reminder(rid)
                 refresh_reminders()
+                refresh_notifications()
 
             reminders_list.controls.append(
                 ft.Row([
@@ -714,6 +727,7 @@ def diary_screen(page: ft.Page):
                 add_reminder(user['id'], date_field.value, text_field.value.strip(),
                              int(annual_sw.value))
             refresh_reminders()
+            refresh_notifications()
 
         def remove(e):
             page.pop_dialog()
@@ -823,6 +837,12 @@ def diary_screen(page: ft.Page):
     from services.reminder_runner import ReminderRunner
     _reminder_runner = ReminderRunner(user['id'], _remind)
     _reminder_runner.start()
+
+    # нативные уведомления: нужны, чтобы напоминание пришло при закрытом приложении
+    from services.notifications import ReminderNotifications
+    _notifications = ReminderNotifications(page, user['id'])
+    notifications_ref[0] = _notifications
+    page.run_thread(_notifications.start)
 
     # автообновление каждые 10 сек — чтобы подтягивать данные с телефона
     def _auto_refresh():

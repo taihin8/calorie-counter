@@ -96,6 +96,26 @@ def reminder_text(reminder: dict, stage: str, today: date = None) -> str:
     return f"{reminder['text']} — {when}{years}"
 
 
+def next_fire_time(remind_date, annual: bool, offset_days: int,
+                   hour: int = 9, now: datetime = None):
+    """Ближайшее будущее время стадии (offset_days до даты) или None.
+
+    Без этого прошедшее сегодняшнее время теряло уведомление целиком: система
+    не показывает уведомление в прошлом, а следующего года никто не планировал.
+    """
+    now = now or datetime.now()
+    remind = parse_date(remind_date) if isinstance(remind_date, str) else remind_date
+    for year in (now.year, now.year + 1, now.year + 2):
+        occurrence = occurrence_in_year(remind, annual, year)
+        when = datetime.combine(occurrence - timedelta(days=offset_days),
+                                datetime.min.time()).replace(hour=hour)
+        if when > now:
+            return when
+        if not annual:
+            return None      # дата разовая и уже прошла — планировать нечего
+    return None
+
+
 def sort_key(reminder: dict, today: date = None):
     """Порядок в списке: ближайшие сверху."""
     return days_until(reminder["remind_date"], bool(reminder.get("annual", 1)), today)

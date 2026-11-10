@@ -86,6 +86,38 @@ AVD `nova13`: 1224×2700, 440 dpi, Android 15 без Google Play (как Huawei 
 Место: копия Flutter (~1.5 ГБ) + Gradle-кэш (~4.5 ГБ) + сборка. При нехватке
 диска `pip` падает с `[Errno 28] No space left on device`.
 
+## Нативные уведомления (напоминания при закрытом приложении)
+
+Пакет `flet-android-notifications` требует правок сгенерированного проекта:
+`core library desugaring` в Gradle и получатели в `AndroidManifest.xml`.
+Flet перегенерирует `build\flutter` при смене опций, поэтому патч надо
+применять **дважды**: первый проход рендерит проект и падает на desugaring,
+затем патч применяется и сборка повторяется. Это уже встроено в
+`.tmp\build_v.bat`; для ручной сборки:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m flet_android_notifications.patcher --project-root build\flutter
+```
+
+Ещё две вещи, без которых уведомления не работают:
+
+- **Developer Mode.** Flutter создаёт симлинки для плагинов, а процессу из-под
+  DSH не хватает `SeCreateSymbolicLinkPrivilege`. Обход — отключить desktop-
+  платформы, для APK они не нужны:
+
+  ```powershell
+  flutter config --no-enable-windows-desktop --no-enable-linux-desktop --no-enable-macos-desktop
+  ```
+
+- **Точные будильники.** Сборка с `SCHEDULE_EXACT_ALARM=true`: неточный режим
+  даёт окно до часа, и напоминание опаздывает. При первом запуске Android
+  спросит разрешение — без него используется неточный режим.
+
+Проверка на устройстве (`adb logcat`): ровно в назначенную минуту должно быть
+`Start proc ... for broadcast {com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver}`,
+а приложение при этом закрыто. Не проверять через `am force-stop`: он переводит
+пакет в `stopped=true`, и доставка блокируется — используйте `am kill`.
+
 ## Патч flet_audio: звук по каналу будильника (перед сборкой)
 
 `flet_audio` создаёт плеер без `AudioContext`, поэтому звук идёт по медиа-каналу —

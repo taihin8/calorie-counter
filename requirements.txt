@@ -4,3 +4,4 @@ flask-sqlalchemy
 flask-login
 speechrecognition
 flet-audio==0.85.3
+flet-android-notifications==0.12.0

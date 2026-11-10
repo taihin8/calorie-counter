@@ -12,3 +12,6 @@ build/
 dist/
 *.apk
 *.aab
+tmp*
+pytest-of-*
+

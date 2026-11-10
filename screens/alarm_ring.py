@@ -3,6 +3,9 @@
 Диалог показываем ПЕРВЫМ, а плеер создаём следом: на Android создание
 audio-сервиса может занять время или не удаться, но звонок пользователь
 обязан увидеть в любом случае.
+
+Звук идёт по каналу будильника (USAGE_ALARM, патч tools/patch_flet_audio.py),
+поэтому слышен даже при выключенном или минимальном медиа-звуке.
 """
 import threading
 
@@ -12,8 +15,8 @@ from services.alarm_service import SOUNDS, format_schedule
 from services.sounds import sound_bytes
 
 RING_SECONDS = 60      # сколько играет мелодия (по спецификации)
-RAMP_SECONDS = 10      # нарастание громкости от тихого к полному
-START_VOLUME = 0.15
+RAMP_SECONDS = 8       # нарастание громкости от тихого к полному
+START_VOLUME = 0.25    # слышно сразу, но не пугает
 
 # держим плееры живыми, пока играют: без ссылки сервис выгружается сборщиком
 _active = []
@@ -22,7 +25,7 @@ _active = []
 def show_ring(page: ft.Page, alarm: dict, point):
     """Показывает диалог звонка и запускает звук. Возвращает управление сразу."""
     stopped = threading.Event()
-    state = {"player": None}
+    state = {"player": None, "wake": None}
     note = ft.Text("", size=11, color=ft.Colors.ORANGE)
 
     def finish(e=None):
@@ -34,10 +37,13 @@ def show_ring(page: ft.Page, alarm: dict, point):
             page.run_task(_pause, player)
             if player in _active:
                 _active.remove(player)
+        wake = state["wake"]
+        if wake is not None:
+            page.run_task(_release_wake, wake)
         page.pop_dialog()
 
     def init_audio():
-        """Создаём плеер после показа диалога: сбой звука не должен скрыть звонок."""
+        """Плеер и удержание экрана — после показа диалога: сбой звука не скроет звонок."""
         try:
             import flet_audio as fa
             data = sound_bytes(alarm.get("sound_id", 0))
@@ -51,6 +57,13 @@ def show_ring(page: ft.Page, alarm: dict, point):
                 page.update()
             except Exception:
                 pass
+        # экран не должен погаснуть, пока звенит
+        try:
+            wake = ft.Wakelock()
+            state["wake"] = wake
+            page.run_task(_hold_wake, wake)
+        except Exception:
+            pass
 
     def ramp():
         """Плавно поднимаем громкость, пока не остановили."""
@@ -66,6 +79,13 @@ def show_ring(page: ft.Page, alarm: dict, point):
             except Exception:
                 return
 
+    def bring_to_front():
+        """Выводим окно поверх других: будильник должен быть виден."""
+        try:
+            page.run_task(_to_front, page)
+        except Exception:
+            pass
+
     dialog = ft.AlertDialog(
         modal=True,
         title=ft.Text(f"⏰ Будильник · {point.strftime('%H:%M')}"),
@@ -80,10 +100,32 @@ def show_ring(page: ft.Page, alarm: dict, point):
     page.show_dialog(dialog)
 
     page.run_thread(init_audio)
+    bring_to_front()
     threading.Thread(target=ramp, daemon=True).start()
     timer = threading.Timer(RING_SECONDS, finish)
     timer.daemon = True
     timer.start()
+
+
+async def _to_front(page):
+    try:
+        await page.window.to_front()
+    except Exception:
+        pass  # на мобильных вызов может быть не поддержан
+
+
+async def _hold_wake(wake):
+    try:
+        await wake.enable()
+    except Exception:
+        pass
+
+
+async def _release_wake(wake):
+    try:
+        await wake.disable()
+    except Exception:
+        pass
 
 
 def _sound_name(sound_id):

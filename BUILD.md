@@ -86,6 +86,24 @@ AVD `nova13`: 1224×2700, 440 dpi, Android 15 без Google Play (как Huawei 
 Место: копия Flutter (~1.5 ГБ) + Gradle-кэш (~4.5 ГБ) + сборка. При нехватке
 диска `pip` падает с `[Errno 28] No space left on device`.
 
+## Патч flet_audio: звук по каналу будильника (перед сборкой)
+
+`flet_audio` создаёт плеер без `AudioContext`, поэтому звук идёт по медиа-каналу —
+при выключенном или минимальном медиа-звуке будильник не слышно. Патч ставит
+канал будильника (`USAGE_ALARM`), который не зависит от медиа-громкости.
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\patch_flet_audio.py
+```
+
+Применять **до** сборки: патч правит flutter-часть пакета в `.venv` (оттуда
+сборка копирует Flutter-расширения) и `build\flutter-packages`. Скрипт
+идемпотентный: повторный запуск печатает `already` и ничего не меняет.
+После переустановки `flet-audio` патч нужно применить снова.
+
+Проверка на устройстве: в `adb logcat` при звонке должно быть
+`requestAudioFocus() ... AA=USAGE_ALARM/CONTENT_TYPE_SONIFICATION`.
+
 ## Тесты перед сборкой
 
 ```powershell

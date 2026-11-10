@@ -680,37 +680,55 @@ def diary_screen(page: ft.Page):
                     ft.IconButton(ft.Icons.PALETTE, tooltip="Тема оформления",
                                   on_click=open_themes),
                 ]),
-                # Панель цели
-                ft.Container(
+                # Вкладки: калькулятор калорий и заметки
+                ft.Tabs(
+                    length=2,
+                    expand=True,
                     content=ft.Column([
-                        ft.Row([
-                            goal_text,
-                            ft.IconButton(ft.Icons.SETTINGS, icon_size=18, tooltip="Изменить цель",
-                                          on_click=edit_goal),
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        goal_bar,
-                        goal_left,
-                    ]),
-                    bgcolor=ft.Colors.GREY_100,
-                    border_radius=10,
-                    padding=10,
+                        ft.TabBar(tabs=[
+                            ft.Tab(label="Калькулятор", icon=ft.Icons.RESTAURANT_MENU),
+                            ft.Tab(label="Заметки", icon=ft.Icons.EDIT_NOTE),
+                        ]),
+                        ft.TabBarView(expand=True, controls=[
+                            # --- вкладка 1: цель и продукты ---
+                            ft.Column([
+                                ft.Container(
+                                    content=ft.Column([
+                                        ft.Row([
+                                            goal_text,
+                                            ft.IconButton(ft.Icons.SETTINGS, icon_size=18,
+                                                          tooltip="Изменить цель",
+                                                          on_click=edit_goal),
+                                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                        goal_bar,
+                                        goal_left,
+                                    ]),
+                                    bgcolor=ft.Colors.GREY_100,
+                                    border_radius=10,
+                                    padding=10,
+                                ),
+                                ft.Row([
+                                    total,
+                                    ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт",
+                                                  on_click=add_food),
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                food_list,
+                            ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
+                            # --- вкладка 2: заметки ---
+                            ft.Column([
+                                ft.Row([
+                                    note_input,
+                                    ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать",
+                                                  on_click=voice_input),
+                                    ft.IconButton(ft.Icons.SEND, tooltip="Сохранить",
+                                                  on_click=save_note),
+                                ], spacing=2),
+                                notes_list,
+                            ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
+                        ]),
+                    ], expand=True, spacing=0),
                 ),
-                total,
-                ft.Divider(),
-                ft.Row([
-                    ft.Text("🍽 Продукты", size=16, weight=ft.FontWeight.BOLD),
-                    ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт", on_click=add_food),
-                ]),
-                food_list,
-                ft.Divider(),
-                ft.Text("📝 Заметки", size=16, weight=ft.FontWeight.BOLD),
-                ft.Row([
-                    note_input,
-                    ft.IconButton(ft.Icons.MIC, tooltip="Надиктовать", on_click=voice_input),
-                    ft.IconButton(ft.Icons.SEND, tooltip="Сохранить", on_click=save_note),
-                ], spacing=2),
-                notes_list,
-            ], scroll=ft.ScrollMode.ADAPTIVE, expand=True, spacing=6),
+            ], expand=True, spacing=6),
             )
         )
     )

@@ -92,6 +92,8 @@ def init_db():
         conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'light'")
     if 'note_font_size' not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN note_font_size INTEGER DEFAULT 10")
+    if 'reminder_font_size' not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN reminder_font_size INTEGER DEFAULT 10")
     # миграция: отметка последнего звонка (чтобы не звонить дважды)
     alarm_cols = [r['name'] for r in conn.execute("PRAGMA table_info(alarms)").fetchall()]
     if 'last_fired' not in alarm_cols:
@@ -211,7 +213,8 @@ def get_goal_progress(user_id, entry_date=None):
     return goal, eaten, goal - eaten
 
 DEFAULT_THEME = 'light'
-# Размер шрифта заметок: 10 / 12 / 14 (8 слишком мелкий на телефоне)
+# Размер шрифта текста (заметки, напоминания): 10 / 12 / 14
+# 8 слишком мелкий на телефоне, поэтому в наборе его нет
 NOTE_FONT_SIZES = (10, 12, 14)
 DEFAULT_NOTE_FONT = 10
 
@@ -235,6 +238,25 @@ def get_note_font_size(user_id):
     conn.close()
     size = row['note_font_size'] if row and row['note_font_size'] else None
     return size if size in NOTE_FONT_SIZES else DEFAULT_NOTE_FONT
+
+
+def get_reminder_font_size(user_id):
+    """Размер шрифта напоминаний; неизвестное значение -> DEFAULT_NOTE_FONT."""
+    conn = get_db()
+    row = conn.execute("SELECT reminder_font_size FROM users WHERE id = ?",
+                       (user_id,)).fetchone()
+    conn.close()
+    size = row['reminder_font_size'] if row and row['reminder_font_size'] else None
+    return size if size in NOTE_FONT_SIZES else DEFAULT_NOTE_FONT
+
+
+def set_reminder_font_size(user_id, size):
+    if size not in NOTE_FONT_SIZES:
+        raise ValueError(f"Недопустимый размер шрифта: {size}")
+    conn = get_db()
+    conn.execute("UPDATE users SET reminder_font_size = ? WHERE id = ?", (size, user_id))
+    conn.commit()
+    conn.close()
 
 
 def set_note_font_size(user_id, size):

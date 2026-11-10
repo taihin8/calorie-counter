@@ -8,12 +8,16 @@ from database import (add_food_entry, get_daily_food, get_daily_calories,
                       delete_food_entry, update_food_entry, get_entry_dates,
                       get_calorie_goal, set_calorie_goal, get_goal_progress,
                       get_theme, set_theme, get_note_font_size, set_note_font_size,
+                      get_reminder_font_size, set_reminder_font_size,
                       NOTE_FONT_SIZES)
 from services.speech import recognize_async, parse_food_text
 from services.themes import THEMES, apply_theme
 
 GREEN = ft.Colors.GREEN_400
-GREY = ft.Colors.GREY_300
+# Приглушённый текст. ON_SURFACE_VARIANT тема подбирает сама, поэтому
+# подписи читаются и на светлой, и на тёмной теме. GREY_300 на светлом фоне
+# давал контраст 1.1:1 — текст был практически не виден.
+GREY = ft.Colors.ON_SURFACE_VARIANT
 
 def _shift_month(month_first, delta):
     """Первый день месяца ±delta месяцев (delta = -1 или +1)."""
@@ -622,6 +626,33 @@ def diary_screen(page: ft.Page):
     # ссылка на сервис уведомлений: заполняется при старте, нужна для перепланирования
     notifications_ref = [None]
 
+    # размер шрифта напоминаний — свой, независимый от заметок
+    reminder_font = [get_reminder_font_size(user['id'])]
+
+    def choose_reminder_font(e):
+        """Выбор размера шрифта напоминаний (10 / 12 / 14)."""
+        chips = ft.Row(wrap=True, spacing=4, run_spacing=4)
+        for size in NOTE_FONT_SIZES:
+            chips.controls.append(
+                ft.Chip(label=ft.Text(f"{size}"),
+                        selected=(size == reminder_font[0]),
+                        on_click=lambda ev, s=size: (_set_reminder_font(s),
+                                                     page.pop_dialog()))
+            )
+        page.show_dialog(ft.AlertDialog(
+            title=ft.Text("Размер шрифта напоминаний"),
+            content=chips,
+            actions=[ft.TextButton("Закрыть", on_click=lambda ev: page.pop_dialog())],
+        ))
+
+    def _set_reminder_font(size):
+        reminder_font[0] = size
+        try:
+            set_reminder_font_size(user['id'], size)
+        except Exception as ex:
+            _log_error("reminder_font", ex)
+        refresh_reminders()
+
     def refresh_notifications():
         """Пересоздаёт системные уведомления после правки напоминаний."""
         svc = notifications_ref[0]
@@ -664,7 +695,9 @@ def diary_screen(page: ft.Page):
             reminders_list.controls.append(
                 ft.Row([
                     ft.Column([
-                        ft.Text(r["text"], size=note_font[0], no_wrap=False),
+                        # цвет задаём явно: по умолчанию текст сливался с фоном
+                        ft.Text(r["text"], size=reminder_font[0], no_wrap=False,
+                                color=ft.Colors.ON_SURFACE),
                         ft.Text(f"{date_txt} · {when}{repeat}", size=10, color=GREY),
                     ], expand=True, spacing=0),
                     ft.Column([
@@ -941,6 +974,9 @@ def diary_screen(page: ft.Page):
                                 ft.Row([
                                     ft.Text("🎂 Памятные дни", size=14,
                                             weight=ft.FontWeight.BOLD, expand=True),
+                                    ft.IconButton(ft.Icons.FORMAT_SIZE,
+                                                  tooltip="Размер шрифта напоминаний",
+                                                  icon_size=18, on_click=choose_reminder_font),
                                     ft.IconButton(ft.Icons.ADD_CIRCLE,
                                                   tooltip="Добавить напоминание",
                                                   on_click=lambda e: reminder_dialog()),

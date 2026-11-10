@@ -18,6 +18,18 @@ def test_default_note_font(tmp_path):
     assert database.NOTE_FONT_SIZES == (10, 12, 14)
 
 
+def test_adaptive_grey_is_readable(tmp_path):
+    """Приглушённый текст — адаптивный цвет, а не GREY_300.
+
+    GREY_300 на светлой теме давал контраст 1.11:1: подписи дат в напоминаниях
+    и подсказки в диалогах были практически не видны.
+    """
+    import flet as ft
+    from screens import diary
+    assert diary.GREY == ft.Colors.ON_SURFACE_VARIANT
+    assert diary.GREY != ft.Colors.GREY_300
+
+
 def test_old_size_8_falls_back_to_default(tmp_path):
     """У тех, кто выбрал убранный 8, показывается 10, а не ошибка."""
     _fresh_db(tmp_path)

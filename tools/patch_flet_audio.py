@@ -74,14 +74,31 @@ def patch_file(path: Path) -> str:
     return "patched"
 
 
+def _installed() -> Path:
+    """Flutter-часть рядом с python-пакетом: путь не зависит от платформы."""
+    try:
+        import flet_audio
+        return (Path(flet_audio.__file__).parent.parent
+                / "flutter" / "flet_audio" / "lib" / "src" / "audio.dart")
+    except Exception:
+        return None
+
+
 def find_targets() -> list:
     """Все копии flutter-части flet_audio, которые видит сборка."""
     root = Path(__file__).resolve().parent.parent
     targets = [
+        _installed(),
         root / ".venv/Lib/site-packages/flutter/flet_audio/lib/src/audio.dart",
         root / "build/flutter-packages/flet_audio/lib/src/audio.dart",
     ]
-    return [p for p in targets if p.exists()]
+    # один и тот же файл может найтись двумя путями — патчим по разу
+    seen, unique = set(), []
+    for p in targets:
+        if p and p.exists() and p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return unique
 
 
 def main() -> int:

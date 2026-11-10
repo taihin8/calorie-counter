@@ -14,6 +14,11 @@ jobs:
 
       # Заметка: локальная сборка (BUILD.md) — основной путь; этот workflow
       # держим рабочим, чтобы релиз можно было собрать и из CI.
+      #
+      # Сборка идёт в два прохода: flet рендерит build/flutter и падает, потому
+      # что плагину уведомлений нужен core library desugaring. После патча
+      # (gradle + манифест) второй проход проходит. Патч flet_audio включает
+      # канал будильника, иначе звонок идёт по медиа-каналу и его не слышно.
       - name: Build APK in Flet container
         run: |
           docker pull ghcr.io/flet-dev/flet-build:latest
@@ -22,19 +27,30 @@ jobs:
             -w /workspace \
             -e GITHUB_REF_NAME \
             ghcr.io/flet-dev/flet-build:latest \
-            sh -c "
-              python3 -m pip install flet &&
-              python3 -m flet build apk
-                --project \"calorie-counter\"
-                --product \"Calorie Counter\"
-                --org \"com.taihin8\"
-                --company \"Calorie Counter\"
-                --build-version \"\$(echo \${GITHUB_REF_NAME#v})\"
-                --android-permissions \"android.permission.REQUEST_INSTALL_PACKAGES=true\"
-                --yes
-            "
+            sh -c '
+              # set -e: без него упавший патч не остановит сборку, и APK
+              # соберётся без канала будильника и без уведомлений
+              set -ex
+              python3 -m pip install flet flet-audio==0.85.3 flet-android-notifications==0.12.0
+              VERSION="$(echo $GITHUB_REF_NAME | sed s/^v//)"
+              flet_build() {
+                python3 -m flet build apk \
+                  --project "calorie-counter" \
+                  --product "Calorie Counter" \
+                  --org "com.taihin8" \
+                  --company "Calorie Counter" \
+                  --build-version "$VERSION" \
+                  --android-permissions "android.permission.REQUEST_INSTALL_PACKAGES=true" "android.permission.SCHEDULE_EXACT_ALARM=true" \
+                  --yes
+              }
+              # Первый проход рендерит проект; на desugaring ожидаемо падает.
+              flet_build || true
+              python3 tools/patch_flet_audio.py
+              python3 -m flet_android_notifications.patcher --project-root build/flutter
+              flet_build
+            '
 
       - name: Upload APK to release
-        run: gh release create "${GITHUB_REF_NAME}" build/apk/*.apk --title "${GITHUB_REF_NAME}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" build/apk/*.apk --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

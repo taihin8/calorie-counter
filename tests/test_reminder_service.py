@@ -109,3 +109,36 @@ def test_next_fire_time_returns_none_for_past_one_off():
     now = datetime(2026, 11, 10, 12, 0)
     assert next_fire_time("2020-03-05", False, 0, now=now) is None
     assert next_fire_time("2026-11-10", False, 0, now=now) is None
+
+
+def test_shift_date_keeps_day_in_short_month():
+    """Переход на короткий месяц прижимает день к его концу, а не падает."""
+    from services.reminder_service import shift_date
+    assert shift_date(date(2026, 1, 31), months=1) == date(2026, 2, 28)
+    assert shift_date(date(2024, 1, 31), months=1) == date(2024, 2, 29)
+    assert shift_date(date(2026, 12, 31), months=1) == date(2027, 1, 31)
+
+
+def test_shift_date_year_and_days():
+    from services.reminder_service import shift_date
+    assert shift_date(date(2026, 11, 11), days=7) == date(2026, 11, 18)
+    assert shift_date(date(2026, 11, 11), years=1) == date(2027, 11, 11)
+    # 29 февраля в невисокосный год -> 28 февраля
+    assert shift_date(date(2024, 2, 29), years=1) == date(2025, 2, 28)
+
+
+def test_shift_date_month_rollover():
+    """Сдвиг на несколько месяцев переходит через год в обе стороны."""
+    from services.reminder_service import shift_date
+    assert shift_date(date(2026, 11, 15), months=3) == date(2027, 2, 15)
+    assert shift_date(date(2026, 1, 15), months=-1) == date(2025, 12, 15)
+    assert shift_date(date(2026, 11, 11), months=12) == date(2027, 11, 11)
+
+
+def test_shift_date_zero_would_not_reset_to_today():
+    """shift(0) не возвращает сегодня: именно поэтому «Сегодня» — отдельная
+    кнопка. Тест фиксирует причину, чтобы её не «упростили» обратно."""
+    from services.reminder_service import shift_date
+    far = date(2027, 12, 12)
+    assert shift_date(far) == far            # сдвиг на ноль ничего не меняет
+    assert shift_date(far) != date.today()

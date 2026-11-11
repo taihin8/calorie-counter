@@ -4,6 +4,7 @@
 напоминания есть флаг `annual`. Срабатываем дважды: за день до даты и в саму
 дату — чтобы было время подготовиться.
 """
+from calendar import monthrange
 from datetime import date, datetime, timedelta
 
 # за сколько дней предупреждаем заранее (за день до даты)
@@ -114,6 +115,17 @@ def next_fire_time(remind_date, annual: bool, offset_days: int,
         if not annual:
             return None      # дата разовая и уже прошла — планировать нечего
     return None
+
+
+def shift_date(current: date, days: int = 0, months: int = 0,
+               years: int = 0) -> date:
+    """Сдвигает дату на срок. Перейдя на короткий месяц, день прижимается к его
+    концу: 31 января + 1 месяц -> 28 (29) февраля, а не ошибка."""
+    month = current.month - 1 + months
+    year = current.year + month // 12 + years
+    month = month % 12 + 1
+    day = min(current.day, monthrange(year, month)[1])
+    return date(year, month, day) + timedelta(days=days)
 
 
 def sort_key(reminder: dict, today: date = None):

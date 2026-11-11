@@ -725,35 +725,51 @@ def diary_screen(page: ft.Page):
     def reminder_dialog(reminder_id=None):
         """Добавление (id=None) или правка напоминания."""
         from database import get_reminder, add_reminder, update_reminder, delete_reminder
-        from services.reminder_service import validate_reminder
+        from services.reminder_service import validate_reminder, shift_date
 
         existing = get_reminder(reminder_id) if reminder_id else None
+        start_date = existing["remind_date"] if existing else date.today().isoformat()
+        start_text = existing["text"] if existing else ""
+        start_annual = bool(existing["annual"]) if existing else True
+
+        def shift(days=0, months=0, years=0):
+            """Сдвигает дату в поле на заданный срок.
+
+            Свои кнопки вместо ft.DatePicker: тот открывается во вложенном
+            навигаторе (useRootNavigator: false) и на телефоне уходит под
+            AlertDialog, поэтому не виден.
+            """
+            try:
+                cur = datetime.strptime(date_field.value, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                cur = date.today()
+            date_field.value = shift_date(cur, days, months, years).isoformat()
+            page.update()
+
+        def set_today(e):
+            """Возвращает сегодняшнюю дату: shift(0) её не вернёт, если поле
+            уже ушло в другой месяц."""
+            date_field.value = date.today().isoformat()
+            page.update()
+
+        # Поле — во всю ширину диалога, как поле описания: в Row с отдельной
+        # иконкой оно не помещалось и вылезало за границы экрана на телефоне.
         date_field = ft.TextField(
-            label="Дата (ГГГГ-ММ-ДД)",
-            value=existing["remind_date"] if existing else date.today().isoformat(),
+            label="Дата (ГГГГ-ММ-ДД)", value=start_date,
             keyboard_type=ft.KeyboardType.DATETIME)
-        text_field = ft.TextField(
-            label="Описание", value=existing["text"] if existing else "",
-            autofocus=reminder_id is None)
-        annual_sw = ft.Switch(label="Каждый год",
-                              value=bool(existing["annual"]) if existing else True)
+        # Быстрые кнопки вместо календаря: обычные кнопки в этом же диалоге
+        # нажатие получают (проверено), а ft.DatePicker — нет.
+        quick = ft.Row(wrap=True, spacing=4, run_spacing=4, controls=[
+            ft.OutlinedButton("Сегодня", on_click=set_today),
+            ft.OutlinedButton("+1 день", on_click=lambda e: shift(days=1)),
+            ft.OutlinedButton("+1 нед.", on_click=lambda e: shift(days=7)),
+            ft.OutlinedButton("+1 мес.", on_click=lambda e: shift(months=1)),
+            ft.OutlinedButton("+1 год", on_click=lambda e: shift(years=1)),
+        ])
+        # autofocus не ставим: клавиатура сразу перекрывала диалог
+        text_field = ft.TextField(label="Описание", value=start_text)
+        annual_sw = ft.Switch(label="Каждый год", value=start_annual)
         error = ft.Text("", size=11, color=ft.Colors.RED)
-
-        def pick_date(e):
-            """Календарь для выбора даты — не надо набирать вручную."""
-            def on_change(ev):
-                if picker.value:
-                    date_field.value = picker.value.strftime("%Y-%m-%d")
-                page.pop_dialog()
-                page.update()
-
-            picker = ft.DatePicker(
-                value=date_field.value,
-                first_date=date(1900, 1, 1),
-                last_date=date(2100, 12, 31),
-                on_change=on_change,
-            )
-            page.show_dialog(picker)
 
         def save(e):
             try:
@@ -786,9 +802,8 @@ def diary_screen(page: ft.Page):
         page.show_dialog(ft.AlertDialog(
             title=ft.Text("Напоминание" if not reminder_id else "Изменить напоминание"),
             content=ft.Column([
-                ft.Row([date_field,
-                        ft.IconButton(ft.Icons.CALENDAR_MONTH, tooltip="Выбрать дату",
-                                      on_click=pick_date)], spacing=2),
+                date_field,
+                quick,
                 text_field,
                 annual_sw,
                 ft.Text("Окно появится за день до даты и в саму дату.", size=10,

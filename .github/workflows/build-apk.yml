@@ -43,10 +43,16 @@ jobs:
                   --android-permissions "android.permission.REQUEST_INSTALL_PACKAGES=true" "android.permission.SCHEDULE_EXACT_ALARM=true" \
                   --yes
               }
-              # Первый проход рендерит проект; на desugaring ожидаемо падает.
+              # Первый проход рендерит проект (патчи к нему ещё не применимы;
+              # при удаче он тоже ничего не портит). Патчи ставим ВСЕГДА после
+              # него: иначе при удачной сборке они пропустятся, и APK выйдет
+              # без уведомлений и без удержания будильника в фоне.
               flet_build || true
               python3 tools/patch_flet_audio.py
-              python3 -m flet_android_notifications.patcher --project-root build/flutter
+              python3 -m flet_android_notifications.patcher \
+                --project-root build/flutter \
+                --foreground-service-type specialUse \
+                --foreground-service-subtype "Keeps scheduled alarms running"
               flet_build
             '
 

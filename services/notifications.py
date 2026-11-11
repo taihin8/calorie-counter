@@ -1,13 +1,20 @@
-"""Нативные уведомления Android: напоминания приходят, даже если приложение закрыто.
+"""Нативные уведомления Android: напоминания и удержание будильника.
 
 Пакет `flet_android_notifications` необязателен: если его нет (десктоп, веб,
 старая сборка), модуль молча выключается — приложение продолжает работать на
 всплывающих окнах.
+
+Зачем foreground-сервис: при сворачивании Android морозит приложение
+(`isFrozen=true`, состояние CACHED), и поток планировщика будильника встаёт —
+звонок не срабатывает. Сервис держит процесс активным, пока включён хотя бы
+один будильник.
 """
 import sys
 
-# стадии: за день до даты и в саму дату
+# стадии напоминаний: за день до даты и в саму дату
 LEAD_DAYS = 1
+# id уведомления сервиса: 0 недопустим
+SERVICE_ID = 1000
 
 
 def _log(message):
@@ -17,15 +24,21 @@ def _log(message):
         pass
 
 
-class ReminderNotifications:
-    """Планирует системные уведомления по напоминаниям пользователя."""
+def service_needed(alarms) -> bool:
+    """Нужен ли foreground-сервис: включён хотя бы один будильник."""
+    return any(bool(a.get("enabled", 1)) for a in alarms)
+
+
+class NativeNotifications:
+    """Планирует системные уведомления и держит процесс для будильника."""
 
     def __init__(self, page, user_id):
         self.page = page
         self.user_id = user_id
         self.service = None
         self.enabled = False
-        self.exact = False   # разрешены ли точные будильники (Android 12+)
+        self.exact = False        # разрешены ли точные будильники (Android 12+)
+        self.service_running = False
 
     def start(self):
         """Подключает сервис и запрашивает разрешения. Вызывать в UI-потоке."""
@@ -45,7 +58,7 @@ class ReminderNotifications:
             return False
 
     async def _setup(self):
-        """Разрешения и канал: без них Android 13+ молча глотает уведомления."""
+        """Разрешения и каналы: без них Android 13+ молча глотает уведомления."""
         try:
             await self.service.request_permissions()
         except Exception as ex:
@@ -64,18 +77,23 @@ class ReminderNotifications:
             self.exact = True
         except Exception as ex:
             _log(f"точные будильники: {type(ex).__name__}: {ex}")
-        self.reschedule()
+        await self._refresh()
 
-    def reschedule(self):
-        """Пересоздаёт все уведомления по текущим напоминаниям."""
+    def refresh(self):
+        """Пересоздаёт уведомления и синхронизирует сервис будильника."""
         if not self.enabled:
             return
-        self.page.run_task(self._reschedule)
+        self.page.run_task(self._refresh)
+
+    async def _refresh(self):
+        await self._reschedule()
+        await self._sync_service()
+
+    # ---------- Напоминания ----------
 
     async def _reschedule(self):
         try:
             from database import get_reminders
-            from services.reminder_service import next_occurrence
             reminders = get_reminders(self.user_id)
         except Exception as ex:
             _log(f"чтение напоминаний: {ex}")
@@ -116,3 +134,33 @@ class ReminderNotifications:
                 schedule_mode="exact_allow_while_idle" if self.exact
                               else "inexact_allow_while_idle",
             )
+
+    # ---------- Будильник: удержание процесса ----------
+
+    async def _sync_service(self):
+        """Включает сервис при включённых будильниках и выключает без них."""
+        try:
+            from database import get_alarms
+            needed = service_needed(get_alarms(self.user_id))
+        except Exception as ex:
+            _log(f"чтение будильников: {ex}")
+            return
+        if needed == self.service_running:
+            return                      # состояние уже верное — не дёргаем Android
+        try:
+            if needed:
+                await self.service.start_foreground_service(
+                    SERVICE_ID, "Будильник включён", "Следит за расписанием",
+                    foreground_service_types=["special_use"],
+                    channel_id="alarm_service", channel_name="Будильник",
+                    channel_description="Удержание будильника в фоне",
+                    # важность low и silent: уведомление не должно звучать
+                    # и мешать, его задача — держать процесс живым
+                    importance="low", play_sound=False, enable_vibration=False,
+                    ongoing=True, auto_cancel=False, silent=True,
+                )
+            else:
+                await self.service.stop_foreground_service()
+            self.service_running = needed
+        except Exception as ex:
+            _log(f"сервис будильника: {type(ex).__name__}: {ex}")

@@ -86,14 +86,37 @@ AVD `nova13`: 1224×2700, 440 dpi, Android 15 без Google Play (как Huawei 
 Место: копия Flutter (~1.5 ГБ) + Gradle-кэш (~4.5 ГБ) + сборка. При нехватке
 диска `pip` падает с `[Errno 28] No space left on device`.
 
+## Удержание будильника в фоне (foreground service)
+
+При сворачивании Android **морозит** приложение (`isFrozen=true`, состояние
+`CACHED`), и поток планировщика встаёт — будильник не звонит. Проверено
+воспроизведением: будильник 05:36 при свёрнутом приложении не сработал.
+
+Решение: foreground-сервис на время, пока включён хотя бы один будильник.
+Состояние процесса меняется с `curProcState=15` (CACHED, заморожен) на
+`curProcState=4` (SERVICE) — процесс жив, звонок срабатывает.
+
+Тип сервиса `specialUse` объявляется патчером пакета уведомлений, поэтому
+патч применяется **всегда** (см. ниже про два прохода):
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m flet_android_notifications.patcher `
+    --project-root build\flutter --foreground-service-type specialUse `
+    --foreground-service-subtype "Следит за расписанием будильника"
+```
+
+Проверка на устройстве: при свёрнутом приложении в `adb logcat` должно быть
+`requestAudioFocus() ... AA=USAGE_ALARM` от нашего pid, а у сервиса —
+`isForeground=true foregroundId=1000 types=0x40000000`.
+
 ## Нативные уведомления (напоминания при закрытом приложении)
 
 Пакет `flet-android-notifications` требует правок сгенерированного проекта:
 `core library desugaring` в Gradle и получатели в `AndroidManifest.xml`.
-Flet перегенерирует `build\flutter` при смене опций, поэтому патч надо
-применять **дважды**: первый проход рендерит проект и падает на desugaring,
-затем патч применяется и сборка повторяется. Это уже встроено в
-`.tmp\build_v.bat`; для ручной сборки:
+Flet перегенерирует `build\flutter` при смене опций, поэтому патч применяют
+**всегда после первого прохода**, а не только при падении: при удачной
+сборке патч иначе пропустится, и APK выйдет без уведомлений и без удержания
+будильника. В `.tmp\build_v.bat` поэтому ровно два прохода. Для ручной сборки:
 
 ```powershell
 & ".\.venv\Scripts\python.exe" -m flet_android_notifications.patcher --project-root build\flutter

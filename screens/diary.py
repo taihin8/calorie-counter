@@ -222,6 +222,7 @@ def diary_screen(page: ft.Page):
                 def remove(ev, aid=a['id']):
                     delete_alarm(aid)
                     render()
+                    refresh_notifications()
 
                 row_info = [ft.Text(format_schedule(a), size=14)]
                 if a.get('last_fired'):
@@ -231,7 +232,7 @@ def diary_screen(page: ft.Page):
                     ft.Row([
                         ft.Switch(value=bool(a['enabled']),
                                   on_change=lambda ev, aid=a['id'], cur=a['enabled']:
-                                      set_alarm_enabled(aid, 0 if cur else 1)),
+                                      _toggle_alarm(aid, cur)),
                         ft.Column([
                             *row_info,
                             ft.Text(f"Звук: {SOUNDS[a['sound_id']]}", size=12, color=GREY),
@@ -242,10 +243,19 @@ def diary_screen(page: ft.Page):
                 )
             page.update()
 
+        def _saved():
+            """После правки будильника список и сервис надо обновить."""
+            render()
+            refresh_notifications()
+
+        def _toggle_alarm(aid, was_enabled):
+            set_alarm_enabled(aid, 0 if was_enabled else 1)
+            refresh_notifications()
+
         def add(e):
             page.pop_dialog()
             from screens.alarm_editor import alarm_editor_dialog
-            alarm_editor_dialog(page, user['id'], None, on_saved=render)
+            alarm_editor_dialog(page, user['id'], None, on_saved=_saved)
 
         dialog = ft.AlertDialog(
             title=ft.Text("Будильник"),
@@ -654,11 +664,11 @@ def diary_screen(page: ft.Page):
         refresh_reminders()
 
     def refresh_notifications():
-        """Пересоздаёт системные уведомления после правки напоминаний."""
+        """Пересоздаёт уведомления и сервис будильника после правок."""
         svc = notifications_ref[0]
         if svc is not None:
             try:
-                svc.reschedule()
+                svc.refresh()
             except Exception as ex:
                 _log_error("notifications", ex)
 
@@ -871,9 +881,10 @@ def diary_screen(page: ft.Page):
     _reminder_runner = ReminderRunner(user['id'], _remind)
     _reminder_runner.start()
 
-    # нативные уведомления: нужны, чтобы напоминание пришло при закрытом приложении
-    from services.notifications import ReminderNotifications
-    _notifications = ReminderNotifications(page, user['id'])
+    # нативные уведомления и сервис: напоминания приходят при закрытом
+    # приложении, а сервис не даёт Android заморозить будильник в фоне
+    from services.notifications import NativeNotifications
+    _notifications = NativeNotifications(page, user['id'])
     notifications_ref[0] = _notifications
     page.run_thread(_notifications.start)
 

@@ -56,15 +56,16 @@ def login_screen(page: ft.Page):
     page.add(
         ft.Column([
             ft.Text("🥗 Calorie Counter", size=28, weight=ft.FontWeight.BOLD),
-            ft.Text("Дневник питания", size=14, color=ft.Colors.GREY),
+            ft.Text("Дневник питания", size=14,
+                    color=ft.Colors.ON_SURFACE_VARIANT),
             ft.Divider(height=30),
             username,
             password,
             ft.Row([users_row], visible=bool(known)),
             ft.Row([
-                ft.ElevatedButton("Войти", on_click=do_login),
+                ft.FilledButton("Войти", on_click=do_login),
                 ft.TextButton("Регистрация", on_click=do_register),
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
             error,
         ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )

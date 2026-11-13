@@ -12,6 +12,8 @@ from database import (add_food_entry, get_daily_food, get_daily_calories,
                       NOTE_FONT_SIZES)
 from services.speech import recognize_async, parse_food_text
 from services.themes import THEMES, apply_theme
+from services.ui_style import (card, row_card, section_title, hint, empty,
+                                ok_color, warn_color)
 
 GREEN = ft.Colors.GREEN_400
 # Приглушённый текст. ON_SURFACE_VARIANT тема подбирает сама, поэтому
@@ -58,10 +60,10 @@ def diary_screen(page: ft.Page):
     selected_date = str(date.today())
     total = ft.Text("0 ккал", size=22, weight=ft.FontWeight.BOLD)
     date_text = ft.Text(selected_date, size=16, weight=ft.FontWeight.BOLD)
-    food_list = ft.Column(spacing=0)
+    food_list = ft.Column(spacing=6)
     note_input = ft.TextField(label="Новая заметка", expand=True, multiline=True)
-    notes_list = ft.Column(spacing=0)
-    reminders_list = ft.Column(spacing=0)
+    notes_list = ft.Column(spacing=6)
+    reminders_list = ft.Column(spacing=6)
 
     # скрытая кнопка-«приёмник» фокуса: перевод фокуса на неё снимает
     # клавиатуру (поле теряет фокус), а сама кнопка невидима (1×1, opacity=0)
@@ -74,7 +76,7 @@ def diary_screen(page: ft.Page):
     # ---------- Цель калорий ----------
     goal_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
     goal_left = ft.Text("", size=13)
-    goal_bar = ft.ProgressBar(value=0, bar_height=10)
+    goal_bar = ft.ProgressBar(value=0, bar_height=10, border_radius=5)
 
     def refresh_goal():
         goal, eaten, left = get_goal_progress(user['id'], selected_date)
@@ -84,11 +86,11 @@ def diary_screen(page: ft.Page):
         goal_bar.value = ratio
         if left >= 0:
             goal_left.value = f"Съедено {eaten:.0f} · осталось {left:.0f} ккал"
-            goal_left.color = ft.Colors.GREEN
+            goal_left.color = ok_color(page)
             goal_bar.color = ft.Colors.GREEN
         else:
             goal_left.value = f"Перебор на {-left:.0f} ккал! 🚨"
-            goal_left.color = ft.Colors.RED
+            goal_left.color = warn_color(page)
             goal_bar.color = ft.Colors.RED
         page.update()
 
@@ -433,9 +435,17 @@ def diary_screen(page: ft.Page):
         food_list.controls.clear()
         for en in entries:
             food_list.controls.append(
-                ft.Row([
-                    ft.Text(f"{en['product_name']} — {en['calories']:.0f} ккал/100г ({en['grams']:.0f} г)",
-                            size=13, expand=True),
+                # карточка: название сверху, граммы и калории ниже,
+                # калории порции — справа крупно
+                row_card(ft.Row([
+                    ft.Column([
+                        ft.Text(en["product_name"], size=14),
+                        ft.Text(f"{en['grams']:.0f} г · {en['calories']:.0f} ккал/100г",
+                                size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], expand=True, spacing=1),
+                    ft.Text(f"{en['calories'] * en['grams'] / 100:.0f}",
+                            size=15, weight=ft.FontWeight.W_600,
+                            color=ft.Colors.PRIMARY),
                     ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26, height=26, padding=0,
                                   tooltip="Изменить",
                                   on_click=lambda _, eid=en['id'], n=en['product_name'],
@@ -443,7 +453,7 @@ def diary_screen(page: ft.Page):
                     ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=14, width=26, height=26, padding=0,
                                   tooltip="Удалить",
                                   on_click=lambda _, eid=en['id']: delete_food(eid)),
-                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER))
             )
         cal = get_daily_calories(user['id'], selected_date)
         total.value = f"{cal:.0f} ккал"
@@ -566,14 +576,19 @@ def diary_screen(page: ft.Page):
     def refresh_notes():
         notes = get_notes(user['id'])
         notes_list.controls.clear()
+        if not notes:
+            notes_list.controls.append(empty("Пока нет заметок"))
         size = note_font[0]
         for n in notes[:20]:
             # текст переносится целиком: раньше обрезался на 45 символах
             # и прочитать заметку можно было только открыв её на изменение
             notes_list.controls.append(
-                ft.Row([
-                    ft.Text(f"[{n['date']}] {n['text']}", size=size, expand=True,
-                            no_wrap=False, selectable=True),
+                row_card(ft.Row([
+                    ft.Column([
+                        ft.Text(n["text"], size=size, no_wrap=False, selectable=True),
+                        ft.Text(n["date"], size=10,
+                                color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], expand=True, spacing=2),
                     ft.Column([
                         ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26, height=26, padding=0,
                                       tooltip="Изменить",
@@ -582,7 +597,7 @@ def diary_screen(page: ft.Page):
                                       tooltip="Удалить",
                                       on_click=lambda _, nid=n['id']: delete_and_refresh(nid)),
                     ], spacing=0),
-                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.START)
+                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.START))
             )
         page.update()
 
@@ -678,8 +693,7 @@ def diary_screen(page: ft.Page):
         reminders_list.controls.clear()
         items = get_reminders(user['id'])
         if not items:
-            reminders_list.controls.append(
-                ft.Text("Нет напоминаний", size=12, color=GREY))
+            reminders_list.controls.append(empty("Нет напоминаний"))
         today = date.today()
         for r in sorted(items, key=lambda x: days_until(x["remind_date"],
                                                         bool(x["annual"]), today)):
@@ -702,14 +716,29 @@ def diary_screen(page: ft.Page):
                 refresh_reminders()
                 refresh_notifications()
 
+            # близкие даты показываем бейджем на залитом фоне: цветной ТЕКСТ
+            # на светлой теме давал контраст 1.7:1 и почти не читался,
+            # а белый на тёмно-зелёном/оранжевом читается всегда
+            when_row = [ft.Text(f"{date_txt}{repeat}", size=11,
+                                color=ft.Colors.ON_SURFACE_VARIANT)]
+            if days <= 1:
+                when_row.append(ft.Container(
+                    content=ft.Text(when, size=10, color=ft.Colors.WHITE,
+                                    weight=ft.FontWeight.W_600),
+                    padding=ft.Padding.symmetric(horizontal=8, vertical=2),
+                    border_radius=10,
+                    bgcolor=(ft.Colors.GREEN_700 if days == 0
+                             else ft.Colors.ORANGE_700),
+                ))
             reminders_list.controls.append(
-                ft.Row([
+                row_card(ft.Row([
                     ft.Column([
                         # цвет задаём явно: по умолчанию текст сливался с фоном
                         ft.Text(r["text"], size=reminder_font[0], no_wrap=False,
                                 color=ft.Colors.ON_SURFACE),
-                        ft.Text(f"{date_txt} · {when}{repeat}", size=10, color=GREY),
-                    ], expand=True, spacing=0),
+                        ft.Row(when_row, spacing=6,
+                               vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ], expand=True, spacing=1),
                     ft.Column([
                         ft.IconButton(ft.Icons.EDIT_OUTLINED, icon_size=14, width=26,
                                       height=26, padding=0, tooltip="Изменить",
@@ -718,7 +747,7 @@ def diary_screen(page: ft.Page):
                                       height=26, padding=0, tooltip="Удалить",
                                       on_click=remove),
                     ], spacing=0),
-                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.START)
+                ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.START))
             )
         page.update()
 
@@ -923,7 +952,13 @@ def diary_screen(page: ft.Page):
                 content=ft.Column([
                 focus_sink,
                 ft.Row([
-                    ft.Text(f"👤 {user['username']}", size=14, color=ft.Colors.GREY),
+                    ft.Container(
+                        content=ft.Text(f"👤 {user['username']}", size=13,
+                                        color=ft.Colors.ON_SURFACE_VARIANT),
+                        padding=ft.Padding.symmetric(horizontal=10, vertical=5),
+                        border_radius=20,
+                        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+                    ),
                     ft.Row([
                         ft.IconButton(ft.Icons.SYSTEM_UPDATE, icon_size=18, width=32, height=32, padding=0,
                                       tooltip="Проверить обновления",
@@ -947,34 +982,43 @@ def diary_screen(page: ft.Page):
                     length=3,
                     expand=True,
                     content=ft.Column([
-                        ft.TabBar(tabs=[
-                            ft.Tab(label="Калькулятор", icon=ft.Icons.RESTAURANT_MENU),
-                            ft.Tab(label="Заметки", icon=ft.Icons.EDIT_NOTE),
-                            ft.Tab(label="Напоминания", icon=ft.Icons.CAKE),
-                        ]),
+                        ft.TabBar(
+                            tabs=[
+                                ft.Tab(label="Калькулятор", icon=ft.Icons.RESTAURANT_MENU),
+                                ft.Tab(label="Заметки", icon=ft.Icons.EDIT_NOTE),
+                                ft.Tab(label="Напоминания", icon=ft.Icons.CAKE),
+                            ],
+                            indicator_color=ft.Colors.PRIMARY,
+                            label_color=ft.Colors.PRIMARY,
+                            unselected_label_color=ft.Colors.ON_SURFACE_VARIANT,
+                            divider_color=ft.Colors.TRANSPARENT,
+                            label_padding=ft.Padding.symmetric(horizontal=6, vertical=4),
+                        ),
                         ft.TabBarView(expand=True, controls=[
                             # --- вкладка 1: цель и продукты ---
                             ft.Column([
-                                ft.Container(
-                                    content=ft.Column([
-                                        ft.Row([
-                                            goal_text,
-                                            ft.IconButton(ft.Icons.SETTINGS, icon_size=18,
-                                                          tooltip="Изменить цель",
-                                                          on_click=edit_goal),
-                                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                        goal_bar,
-                                        goal_left,
-                                    ]),
-                                    bgcolor=ft.Colors.GREY_100,
-                                    border_radius=10,
-                                    padding=10,
-                                ),
-                                ft.Row([
-                                    total,
-                                    ft.IconButton(ft.Icons.ADD_CIRCLE, tooltip="Добавить продукт",
+                                # bgcolor из темы, а не GREY_100: на тёмной
+                                # теме серый фон сливался с белым текстом
+                                card(ft.Column([
+                                    ft.Row([
+                                        goal_text,
+                                        ft.IconButton(ft.Icons.SETTINGS, icon_size=18,
+                                                      tooltip="Изменить цель",
+                                                      on_click=edit_goal),
+                                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                    goal_bar,
+                                    goal_left,
+                                ], spacing=8)),
+                                row_card(ft.Row([
+                                    ft.Column([
+                                        hint("Съедено за день"),
+                                        total,
+                                    ], spacing=0, expand=True),
+                                    ft.IconButton(ft.Icons.ADD_CIRCLE,
+                                                  tooltip="Добавить продукт",
+                                                  icon_size=26,
                                                   on_click=add_food),
-                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)),
                                 food_list,
                             ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
                             # --- вкладка 2: заметки ---
@@ -986,29 +1030,23 @@ def diary_screen(page: ft.Page):
                                     ft.IconButton(ft.Icons.SEND, tooltip="Сохранить",
                                                   on_click=save_note),
                                 ], spacing=2),
-                                ft.Row([
-                                    ft.Text("📝 Заметки", size=14,
-                                            weight=ft.FontWeight.BOLD, expand=True),
-                                    ft.IconButton(ft.Icons.FORMAT_SIZE,
-                                                  tooltip="Размер шрифта заметок",
-                                                  icon_size=18, on_click=choose_font),
-                                ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                section_title("📝 Заметки",
+                                              ft.IconButton(ft.Icons.FORMAT_SIZE,
+                                                            tooltip="Размер шрифта заметок",
+                                                            icon_size=18, on_click=choose_font)),
                                 notes_list,
                             ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
                             # --- вкладка 3: напоминания ---
                             ft.Column([
-                                ft.Row([
-                                    ft.Text("🎂 Памятные дни", size=14,
-                                            weight=ft.FontWeight.BOLD, expand=True),
+                                section_title("🎂 Памятные дни", ft.Row([
                                     ft.IconButton(ft.Icons.FORMAT_SIZE,
                                                   tooltip="Размер шрифта напоминаний",
                                                   icon_size=18, on_click=choose_reminder_font),
                                     ft.IconButton(ft.Icons.ADD_CIRCLE,
                                                   tooltip="Добавить напоминание",
                                                   on_click=lambda e: reminder_dialog()),
-                                ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                                ft.Text("Всплывающее окно появится за день до даты "
-                                        "и в саму дату.", size=10, color=GREY),
+                                ], spacing=0)),
+                                hint("Окно появится за день до даты и в саму дату."),
                                 reminders_list,
                             ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE, expand=True),
                         ]),

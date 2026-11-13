@@ -69,6 +69,36 @@ def shade(page, light_color, dark_color):
     return dark_color if is_dark else light_color
 
 
+def badge(page, text, *, kind="info"):
+    """Тональная метка: светлый фон и тёмный текст (или наоборот на тёмной теме).
+
+    Заливка ярким цветом с белым текстом давала слабый контраст (оранжевый
+    2.7:1), поэтому берём тональную пару: 7.0:1 для зелёной и 5.1:1 для
+    оранжевой метки.
+    """
+    pairs = {
+        # kind: (фон светлой темы, текст светлой, фон тёмной, текст тёмной)
+        "today": (ft.Colors.GREEN_50, ft.Colors.GREEN_900,
+                  ft.Colors.GREEN_900, ft.Colors.GREEN_50),
+        "tomorrow": (ft.Colors.ORANGE_50, ft.Colors.ORANGE_900,
+                     ft.Colors.ORANGE_900, ft.Colors.ORANGE_50),
+        "info": (ft.Colors.SURFACE_CONTAINER_HIGH, ft.Colors.ON_SURFACE_VARIANT,
+                 ft.Colors.SURFACE_CONTAINER_HIGH, ft.Colors.ON_SURFACE_VARIANT),
+    }
+    bg_l, fg_l, bg_d, fg_d = pairs.get(kind, pairs["info"])
+    try:
+        is_dark = page.theme_mode == ft.ThemeMode.DARK
+    except Exception:
+        is_dark = False
+    bg, fg = (bg_d, fg_d) if is_dark else (bg_l, fg_l)
+    return ft.Container(
+        content=ft.Text(text, size=10, color=fg, weight=ft.FontWeight.W_600),
+        padding=ft.Padding.symmetric(horizontal=8, vertical=2),
+        border_radius=10,
+        bgcolor=bg,
+    )
+
+
 def ok_color(page):
     """Цвет «всё хорошо» (в норме калорий)."""
     return shade(page, ft.Colors.GREEN_800, ft.Colors.GREEN_300)

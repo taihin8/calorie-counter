@@ -71,3 +71,44 @@ def test_rows_have_shadow():
     from services.ui_style import card, row_card
     assert card(None).shadow is not None
     assert row_card(None).shadow is not None
+
+
+def _wcag_contrast(a, b):
+    """Контраст по WCAG: нужен >= 4.5:1 для обычного текста."""
+    def srgb(c):
+        c = c / 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    def lum(col):
+        r, g, bl = col
+        return 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(bl)
+    la, lb = lum(a), lum(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_badge_kinds_have_readable_contrast():
+    """Тональные метки читаются: раньше оранжевая заливка давала 2.7:1."""
+    import flet as ft
+    from services.ui_style import badge
+
+    class _P:
+        theme_mode = ft.ThemeMode.LIGHT
+
+    pairs = {
+        "today": ((232, 245, 233), (27, 94, 32)),      # GREEN_50 / GREEN_900
+        "tomorrow": ((255, 243, 224), (191, 54, 12)),   # ORANGE_50 / ORANGE_900
+    }
+    for kind, (bg, fg) in pairs.items():
+        assert _wcag_contrast(bg, fg) >= 4.5, kind
+        b = badge(_P(), "x", kind=kind)
+        assert b.bgcolor is not None and b.content.color is not None
+
+
+def test_badge_survives_broken_page():
+    """Без темы у страницы метка всё равно создаётся."""
+    from services.ui_style import badge
+    class _Broken:
+        @property
+        def theme_mode(self):
+            raise RuntimeError("нет темы")
+    assert badge(_Broken(), "x", kind="today") is not None

@@ -13,7 +13,7 @@ from database import (add_food_entry, get_daily_food, get_daily_calories,
 from services.speech import recognize_async, parse_food_text
 from services.themes import THEMES, apply_theme
 from services.ui_style import (card, row_card, section_title, hint, empty,
-                                ok_color, warn_color)
+                                ok_color, warn_color, badge)
 
 GREEN = ft.Colors.GREEN_400
 # Приглушённый текст. ON_SURFACE_VARIANT тема подбирает сама, поэтому
@@ -722,14 +722,8 @@ def diary_screen(page: ft.Page):
             when_row = [ft.Text(f"{date_txt}{repeat}", size=11,
                                 color=ft.Colors.ON_SURFACE_VARIANT)]
             if days <= 1:
-                when_row.append(ft.Container(
-                    content=ft.Text(when, size=10, color=ft.Colors.WHITE,
-                                    weight=ft.FontWeight.W_600),
-                    padding=ft.Padding.symmetric(horizontal=8, vertical=2),
-                    border_radius=10,
-                    bgcolor=(ft.Colors.GREEN_700 if days == 0
-                             else ft.Colors.ORANGE_700),
-                ))
+                when_row.append(badge(page, when,
+                                      kind="today" if days == 0 else "tomorrow"))
             reminders_list.controls.append(
                 row_card(ft.Row([
                     ft.Column([

@@ -112,3 +112,21 @@ def test_badge_survives_broken_page():
         def theme_mode(self):
             raise RuntimeError("нет темы")
     assert badge(_Broken(), "x", kind="today") is not None
+
+
+def test_themes_have_unique_seeds():
+    """У каждой темы своя палитра.
+
+    Раньше «Светлая» и «Синяя» использовали один seed BLUE, поэтому выбор
+    темы не давал видимой разницы.
+    """
+    from services.themes import THEMES
+    seeds = [str(v[2]) for v in THEMES.values()]
+    assert len(set(seeds)) == len(seeds), f"повтор seed: {seeds}"
+
+
+def test_theme_seed_returns_color():
+    from services.themes import theme_seed, DEFAULT_THEME, THEMES
+    assert theme_seed(DEFAULT_THEME) == THEMES[DEFAULT_THEME][2]
+    # неизвестное имя -> тема по умолчанию, без падения
+    assert theme_seed("нет-такой") == THEMES[DEFAULT_THEME][2]

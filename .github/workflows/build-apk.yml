@@ -40,7 +40,7 @@ jobs:
                   --org "com.taihin8" \
                   --company "Calorie Counter" \
                   --build-version "$VERSION" \
-                  --android-permissions "android.permission.REQUEST_INSTALL_PACKAGES=true" "android.permission.SCHEDULE_EXACT_ALARM=true" \
+                  --android-permissions "android.permission.REQUEST_INSTALL_PACKAGES=true" "android.permission.SCHEDULE_EXACT_ALARM=true" "android.permission.USE_FULL_SCREEN_INTENT=true" \
                   --yes
               }
               # Первый проход рендерит проект (патчи к нему ещё не применимы;

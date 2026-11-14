@@ -920,11 +920,32 @@ def diary_screen(page: ft.Page):
     _reminder_runner.start()
 
     # нативные уведомления и сервис: напоминания приходят при закрытом
-    # приложении, а сервис не даёт Android заморозить будильник в фоне
+    # приложении, а уведомление будильника поднимает приложение и звонит
     from services.notifications import NativeNotifications
-    _notifications = NativeNotifications(page, user['id'])
+    _notifications = NativeNotifications(page, user['id'], on_alarm_tap=_ring)
     notifications_ref[0] = _notifications
-    page.run_thread(_notifications.start)
+
+    def _start_notifications():
+        """Поднимает сервис и звонит, если запуск был по уведомлению."""
+        if _notifications.start():
+            page.run_task(_notifications.check_launch)
+
+    page.run_thread(_start_notifications)
+
+    def _on_lifecycle(e):
+        """Вернулись в приложение — проверяем, не нажали ли уведомление.
+
+        Событие нажатия при холодном старте может опередить подписку, поэтому
+        при возобновлении перечитываем данные запуска.
+        """
+        try:
+            state = str(getattr(e, "state", "") or "").upper()
+        except Exception:
+            return
+        if "RESUME" in state or "SHOW" in state:
+            page.run_task(_notifications.check_launch)
+
+    page.on_app_lifecycle_state_change = _on_lifecycle
 
     # автообновление каждые 10 сек — чтобы подтягивать данные с телефона
     def _auto_refresh():

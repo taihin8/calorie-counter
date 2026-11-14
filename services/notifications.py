@@ -9,12 +9,34 @@
 звонок не срабатывает. Сервис держит процесс активным, пока включён хотя бы
 один будильник.
 """
+import json
 import sys
 
 # стадии напоминаний: за день до даты и в саму дату
 LEAD_DAYS = 1
 # id уведомления сервиса: 0 недопустим
 SERVICE_ID = 1000
+# id уведомлений будильника начинаются отсюда, чтобы не совпасть с напоминаниями
+ALARM_ID_BASE = 2000
+# префикс payload: по нему узнаём, что нажали именно уведомление будильника
+ALARM_PREFIX = "alarm:"
+
+
+def alarm_payload(alarm_id, point_iso: str) -> str:
+    """Метка уведомления будильника: id и время срабатывания."""
+    return f"{ALARM_PREFIX}{alarm_id}:{point_iso}"
+
+
+def parse_alarm_payload(payload: str):
+    """(id будильника, время) из метки или None, если метка чужая."""
+    if not payload or not payload.startswith(ALARM_PREFIX):
+        return None
+    try:
+        rest = payload[len(ALARM_PREFIX):]
+        alarm_id, point_iso = rest.split(":", 1)
+        return int(alarm_id), point_iso
+    except (ValueError, AttributeError):
+        return None
 
 
 def _log(message):
@@ -22,6 +44,27 @@ def _log(message):
         print(f"[notifications] {message}", file=sys.stderr, flush=True)
     except Exception:
         pass
+
+
+def payload_from(value) -> str:
+    """payload из события или ответа плагина.
+
+    Dart присылает JSON-строку, но часть вызовов отдаёт готовый словарь —
+    поддерживаем оба вида, иначе нажатие «терялось».
+    """
+    if isinstance(value, dict):
+        return str(value.get("payload") or "")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.startswith("{"):
+            return ""
+        try:
+            obj = json.loads(text)
+        except (ValueError, TypeError):
+            return ""
+        if isinstance(obj, dict):
+            return str(obj.get("payload") or "")
+    return ""
 
 
 def service_needed(alarms) -> bool:
@@ -32,13 +75,17 @@ def service_needed(alarms) -> bool:
 class NativeNotifications:
     """Планирует системные уведомления и держит процесс для будильника."""
 
-    def __init__(self, page, user_id):
+    def __init__(self, page, user_id, on_alarm_tap=None):
         self.page = page
         self.user_id = user_id
+        # что делать, когда нажали уведомление будильника
+        self.on_alarm_tap = on_alarm_tap
         self.service = None
         self.enabled = False
         self.exact = False        # разрешены ли точные будильники (Android 12+)
         self.service_running = False
+        # уже обработанные метки: возобновление приложения не должно звонить снова
+        self._handled = []
 
     def start(self):
         """Подключает сервис и запрашивает разрешения. Вызывать в UI-потоке."""
@@ -48,7 +95,10 @@ class NativeNotifications:
             _log(f"пакет недоступен: {type(ex).__name__}")
             return False
         try:
-            self.service = FletAndroidNotifications()
+            # обработчик передаём при создании: назначение после создания
+            # могло не дойти до Flutter-стороны, и нажатие терялось
+            self.service = FletAndroidNotifications(
+                on_notification_tap=self._handle_tap)
             self.enabled = True
             self.page.run_task(self._setup)
             return True
@@ -57,27 +107,52 @@ class NativeNotifications:
             self.enabled = False
             return False
 
-    async def _setup(self):
-        """Разрешения и каналы: без них Android 13+ молча глотает уведомления."""
+    async def _bounded(self, coro, what: str, timeout: float = 3.0):
+        """Ждёт ответ плагина не дольше timeout.
+
+        Часть запросов открывает системный экран настроек. Если его не закрыть,
+        ответ может не прийти вовсе — без таймаута настройка зависала, и до
+        планирования уведомлений дело не доходило.
+        """
+        import asyncio
         try:
-            await self.service.request_permissions()
+            return await asyncio.wait_for(coro, timeout=timeout)
         except Exception as ex:
-            _log(f"разрешения: {type(ex).__name__}: {ex}")
-        try:
-            await self.service.create_notification_channel(
+            _log(f"{what}: {type(ex).__name__}")
+            return None
+
+    async def _setup(self):
+        """Разрешения, каналы и планирование уведомлений."""
+        await self._bounded(self.service.request_permissions(), "разрешения")
+        await self._bounded(
+            self.service.create_notification_channel(
                 "reminders", "Напоминания",
                 channel_description="Памятные дни и дни рождения",
-                importance="high", play_sound=True, enable_vibration=True)
-        except Exception as ex:
-            _log(f"канал: {type(ex).__name__}: {ex}")
-        # точный режим: неточный даёт окно до часа, и напоминание опаздывает
+                importance="high", play_sound=True, enable_vibration=True),
+            "канал напоминаний")
+        # канал будильника: со звуком и высокой важностью, иначе уведомление
+        # приходит «молча» и звонок не слышно
+        await self._bounded(
+            self.service.create_notification_channel(
+                "alarms", "Будильник",
+                channel_description="Звонок будильника",
+                importance="high", play_sound=True, enable_vibration=True),
+            "канал будильника")
+        # проверка точных будильников — обычный запрос, экран не открывает
         try:
-            if not await self.service.can_schedule_exact_notifications():
-                await self.service.request_exact_alarm_permission()
-            self.exact = True
+            allowed = await self._bounded(
+                self.service.can_schedule_exact_notifications(), "проверка точных")
+            self.exact = bool(allowed)
         except Exception as ex:
-            _log(f"точные будильники: {type(ex).__name__}: {ex}")
+            _log(f"точные будильники: {type(ex).__name__}")
+        # планируем ДО запросов, которые открывают системные экраны
         await self._refresh()
+        # просьбы, открывающие настройки Android: ограничены по времени
+        if not self.exact:
+            await self._bounded(self.service.request_exact_alarm_permission(),
+                                "запрос точных будильников")
+        await self._bounded(self.service.request_full_screen_intent_permission(),
+                            "полноэкранное окно")
 
     def refresh(self):
         """Пересоздаёт уведомления и синхронизирует сервис будильника."""
@@ -87,6 +162,7 @@ class NativeNotifications:
 
     async def _refresh(self):
         await self._reschedule()
+        await self._schedule_alarms()
         await self._sync_service()
 
     # ---------- Напоминания ----------
@@ -134,6 +210,105 @@ class NativeNotifications:
                 schedule_mode="exact_allow_while_idle" if self.exact
                               else "inexact_allow_while_idle",
             )
+
+    # ---------- Нажатие по уведомлению будильника ----------
+
+    def _handle_tap(self, e=None):
+        """Система подняла приложение по уведомлению — звоним.
+
+        Dart присылает событие по-разному (словарь или JSON-строка), поэтому
+        разбираем оба вида — иначе нажатие молча терялось.
+        """
+        try:
+            payload = payload_from(getattr(e, "data", None))
+        except Exception as ex:
+            _log(f"нажатие: {type(ex).__name__}: {ex}")
+            return
+        self.ring_by_payload(payload)
+
+    async def check_launch(self):
+        """Звонит, если приложение запустили нажатием по уведомлению.
+
+        Нужно при холодном старте: событие нажатия тогда ещё некому слушать.
+        """
+        try:
+            details = await self.service.get_notification_app_launch_details()
+            if not details.get("did_notification_launch_app"):
+                return
+            self.ring_by_payload(payload_from(details.get("notification_response")))
+        except Exception as ex:
+            _log(f"запуск по уведомлению: {type(ex).__name__}: {ex}")
+
+    def ring_by_payload(self, payload: str):
+        """Звонит по метке уведомления; чужие метки игнорирует."""
+        parsed = parse_alarm_payload(payload)
+        if not parsed:
+            return
+        if payload in self._handled:
+            return                    # это срабатывание уже отзвонили
+        self._handled.append(payload)
+        del self._handled[:-20]       # держим только последние метки
+        alarm_id, point_iso = parsed
+        try:
+            from datetime import datetime
+            from database import get_alarm, mark_alarm_fired
+            alarm = get_alarm(alarm_id)
+            if not alarm:
+                _log(f"будильник {alarm_id} не найден")
+                return
+            point = datetime.fromisoformat(point_iso)
+            # отметку ставим до звонка: повторное нажатие не позвонит снова
+            mark_alarm_fired(alarm_id, point.isoformat(timespec="seconds"))
+            if self.on_alarm_tap:
+                self.on_alarm_tap(alarm, point)
+        except Exception as ex:
+            _log(f"звонок по уведомлению: {type(ex).__name__}: {ex}")
+
+    # ---------- Будильник: системное уведомление в момент срабатывания ----------
+
+    async def _schedule_alarms(self):
+        """Ставит уведомление на ближайшее срабатывание каждого будильника.
+
+        Приложение может быть выгружено системой — тогда поток планировщика
+        не работает. Уведомление ставит сама система, и по нажатию открывает
+        приложение: окно звонка запускается уже в живом процессе.
+        """
+        try:
+            from database import get_alarms
+            alarms = get_alarms(self.user_id)
+        except Exception as ex:
+            _log(f"чтение будильников: {ex}")
+            return
+        for alarm in alarms:
+            try:
+                await self._schedule_alarm_one(alarm)
+            except Exception as ex:
+                _log(f"будильник {alarm.get('id')}: {type(ex).__name__}: {ex}")
+
+    async def _schedule_alarm_one(self, alarm):
+        """Уведомление на ближайшую точку расписания будильника."""
+        from services.alarm_service import next_occurrence, format_schedule
+        if not alarm.get("enabled", 1):
+            return
+        try:
+            point = next_occurrence(alarm)
+        except Exception as ex:
+            _log(f"расписание будильника: {type(ex).__name__}")
+            return
+        await self.service.schedule_notification(
+            ALARM_ID_BASE + int(alarm["id"]),
+            f"⏰ Будильник · {point.strftime('%H:%M')}",
+            format_schedule(alarm),
+            point,
+            payload=alarm_payload(alarm["id"], point.isoformat(timespec="minutes")),
+            channel_id="alarms", channel_name="Будильник",
+            channel_description="Звонок будильника",
+            importance="high", play_sound=True, enable_vibration=True,
+            category="alarm", full_screen_intent=True,
+            # точное время: иначе система может позвонить с задержкой до часа
+            schedule_mode="exact_allow_while_idle" if self.exact
+                          else "inexact_allow_while_idle",
+        )
 
     # ---------- Будильник: удержание процесса ----------
 
